@@ -6,6 +6,7 @@ energy consumed (RAPL, GPU power APIs), with energy treated as a first-class
 metric.
 
 Status: early development.
+CI Status: [![CI](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml/badge.svg)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml)
 
 ## Building
 
