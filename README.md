@@ -22,3 +22,5 @@ cargo build --release
 | `pne-perf`   | `perf_event_open` hardware counters (FFI)        |
 | `pne-energy` | RAPL / powercap energy readings, GPU power later |
 | `pne-cli`    | The `pne-profiler` binary                        |
+
+## Contribution
