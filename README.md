@@ -65,7 +65,7 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    key so Jira links it. Start commit messages with the key too.
 
    ```bash
-   git switch rc/v0.0.0 && git pull
+   git switch rc/vX.Y.Z && git pull   # the current release candidate
    git switch -c SCRUM-10
    git commit -m "SCRUM-10: ..."
    ```

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [rc/v0.0.0]
+    branches: ['rc/**']
   pull_request:
 
 env:
