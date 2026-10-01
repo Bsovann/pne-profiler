@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [rc/0.0.0]
+    branches: [rc/v0.0.0]
   pull_request:
 
 env:
@@ -19,5 +19,11 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets - D warnings
+      - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace
+
+  typos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1.50.3

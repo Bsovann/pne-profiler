@@ -1,0 +1,34 @@
+name: Changelog
+
+on:
+  pull_request:
+    branches: ['rc/**']
+    # labeled/unlabeled so toggling skip-changelog re-runs the check.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  fragment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: pip install pyyaml
+      - run: Changelogs/fragments.py check
+      - name: Require a ticket fragment
+        if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          changed=$(git diff --name-only --diff-filter=AM "$BASE"...HEAD -- \
+            Changelogs/ChangeFragments/ \
+            ':!Changelogs/ChangeFragments/changelog.yml' \
+            ':!Changelogs/ChangeFragments/PG-0000-Template.yml')
+          if [ -z "$changed" ]; then
+            echo "::error::Add Changelogs/ChangeFragments/<JIRA-KEY>.yml (copy PG-0000-Template.yml), or label the PR skip-changelog."
+            exit 1
+          fi
+          echo "Fragments: $changed"

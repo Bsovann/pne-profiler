@@ -1,0 +1,9 @@
+---
+Version: 0.1.0
+Release_Date: TBD
+Trivial_Changes:
+  - (README) - documented the release steps for generating the RPM changelog.
+Minor_Changes:
+  - (CI) - added a typos spell-check job to the CI pipeline.
+  - (RPM) - added an RPM spec for packaging the pne-profiler binary.
+  - (RPM) - added update-changelog.py to generate the spec's %changelog entry from changelog.yml.

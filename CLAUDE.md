@@ -43,14 +43,24 @@ cargo clippy --workspace --all-targets          # lint (CI uses -D warnings)
 cargo fmt --all                                 # format
 ```
 
-CI (`.github/workflows/ci.yml`) runs fmt check, clippy, and tests, with `RUSTFLAGS=-D warnings`.
+CI (`.github/workflows/ci.yml`) runs fmt check, clippy, tests (with `RUSTFLAGS=-D warnings`), and a `typos` spell check (exceptions go in `_typos.toml`). `.github/workflows/changelog.yml` validates changelog fragments on PRs to `rc/**` and requires each PR to add one unless it's labeled `skip-changelog`.
 
-## Changelog fragments
-
-Changes are recorded as YAML fragments in `Changelogs/ChangeFragments/`, one file per change, named after the ticket ID (template: `PG-0000-Template.yml`). Copy the template, drop sections that don't apply, and write each entry as:
-
-```
-- (component) - (verb past tense) + (change description)
+```bash
+Changelogs/fragments.py check                   # validate fragments (same as CI)
 ```
 
-Sections: `Trivial Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`. Note the template spells the first key with a space while the others use underscores — keep the keys exactly as in the template unless the convention is deliberately changed.
+## Branches and changelog
+
+Work flows ticket branch → `rc/vX.Y.Z` → `master`:
+
+1. Each Jira ticket gets a branch off the current `rc/*` branch, named after the Jira key (`SCRUM-10`, optionally `SCRUM-10-short-desc`). Commits start with the key (`SCRUM-10: ...`) so Jira links them; use the hyphenated form, not `SCRUM10`.
+2. The ticket's changes are recorded in `Changelogs/ChangeFragments/<JIRA-KEY>.yml`, copied from `PG-0000-Template.yml`. Drop sections that don't apply and write each entry as:
+
+   ```
+   - (component) - (verb past tense) + (change description)
+   ```
+
+   Sections: `Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`; pick the one matching the change type. Quote an entry that contains `: `, or YAML parses it as a mapping.
+3. The ticket branch is PR'd into the rc branch and reviewed by the maintainer.
+4. The maintainer folds approved fragments into the rc's single `changelog.yml` (which also carries `Version` and `Release_Date`) with `Changelogs/fragments.py fold`; this deletes the folded fragments. Don't edit `changelog.yml` from a ticket branch.
+5. At release, `RPM/update-changelog.py` turns `changelog.yml` into the RPM `%changelog` entry (see README "Releasing"), and the rc branch is merged to `master` and tagged.

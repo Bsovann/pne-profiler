@@ -1,0 +1,3 @@
+[default]
+# rpmbuild's -ba flag (build all) reads as a misspelling of "by"/"be".
+extend-ignore-re = ["rpmbuild -ba"]

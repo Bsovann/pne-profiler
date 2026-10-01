@@ -1,0 +1,7 @@
+---
+Trivial_Changes:
+  - (Docs) - documented the ticket branch, fragment, and review workflow in README and CLAUDE.md.
+Minor_Changes:
+  - (Changelog) - added fragments.py to validate ticket fragments and fold them into changelog.yml.
+  - (CI) - added a changelog workflow that requires a valid fragment on PRs to rc branches.
+  - (Changelog) - renamed the template's Trivial Changes key to Trivial_Changes.
