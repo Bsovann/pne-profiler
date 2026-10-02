@@ -16,9 +16,7 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Performance and energy profiler for parallel workloads
 
-# TODO: no LICENSE file in the repo yet. Set this to the SPDX identifier
-# once one is chosen, and add the file to %%license below.
-License:        LicenseRef-TBD
+License:        Apache-2.0
 URL:            https://github.com/Bsovann/pne-profiler
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 
@@ -50,6 +48,7 @@ install -Dpm 0755 target/release/%{name} %{buildroot}%{_bindir}/%{name}
 cargo test --release --locked --offline --workspace
 
 %files
+%license LICENSE
 %doc README.md
 %{_bindir}/%{name}
 
