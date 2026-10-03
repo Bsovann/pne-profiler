@@ -14,6 +14,7 @@ path = "src/main.rs"
 pne-core.workspace = true
 pne-perf.workspace = true
 pne-energy.workspace = true
+clap = { version = "4.6.7", features = ["derive"] }
 
 [lints]
 workspace = true
