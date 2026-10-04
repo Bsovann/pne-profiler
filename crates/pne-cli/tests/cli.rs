@@ -32,11 +32,7 @@ fn run_target_success() {
     let output = prof(&["run", "printf", "[%s]", "-x", "--help"]);
 
     assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
-    assert!(
-        stdout(&output).contains("[-x][--help]"),
-        "stdout: {}",
-        stdout(&output)
-    );
+    assert_eq!(stdout(&output), "[-x][--help]");
 }
 
 #[test]
