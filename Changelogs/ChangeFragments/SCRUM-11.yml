@@ -1,9 +1,0 @@
----
-Trivial_Changes:
-  - (Git) - added a commit-msg hook in .githooks that rejects messages not starting with a SCRUM-<n> Jira key.
-  - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, the documented run -- ./program args form, non-zero exit propagation, and command-not-found.
-Minor_Changes:
-  - (Changelog) - made fragments.py fold set Version in changelog.yml and Cargo.toml by bumping the last released version by major, minor, or patch.
-  - (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.
-  - (pne-cli) - added spawning of the target command with inherited stdio.
-  - (pne-cli) - exited with the target's exit code, 128 + signal when the target is killed, 127 when the command is not found, and 126 when it cannot be executed.
