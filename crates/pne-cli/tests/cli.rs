@@ -1,3 +1,4 @@
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Output};
 
 /// Runs pne-profiler with `args` and captures its exit status, stdout and stderr.
@@ -36,6 +37,27 @@ fn run_target_success() {
         "stdout: {}",
         stdout(&output)
     );
+}
+
+#[test]
+fn run_double_dash_relative_program() {
+    // The documented form: `pne-profiler run -- ./program args`. Build a real
+    // ./program in a scratch dir and run pne-profiler from there.
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("double_dash");
+    std::fs::create_dir_all(&dir).unwrap();
+    let program = dir.join("program");
+    std::fs::write(&program, "#!/bin/sh\nprintf '[%s]' \"$@\"\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_pne-profiler"))
+        .args(["run", "--", "./program", "-x", "--", "--help"])
+        .current_dir(&dir)
+        .output()
+        .expect("failed to run pne-profiler");
+
+    // clap consumes the first `--`; a later `--` belongs to the target.
+    assert_eq!(output.status.code(), Some(0), "stderr: {}", stderr(&output));
+    assert_eq!(stdout(&output), "[-x][--][--help]");
 }
 
 #[test]

@@ -5,8 +5,6 @@ use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, ExitCode, Stdio};
 
 fn main() -> ExitCode {
-    println!("pne-profiler {}", env!("CARGO_PKG_VERSION"));
-
     // On a usage error or --help/--version, clap prints and exits the process
     // itself, so past this line we always have a valid subcommand.
     let cli = Cli::parse();
@@ -14,7 +12,6 @@ fn main() -> ExitCode {
         Commands::Run { cmd } => {
             // First word is the program, the rest are its arguments.
             let (prog, args) = cmd.split_first().expect("clap guarantees at least one");
-            println!("Would run {:?} with {:?}!", prog, args);
 
             // Spawn the target and wait for it. Inheriting stdio lets it share
             // our terminal, so it reads input and prints output as if run directly.
@@ -54,7 +51,7 @@ fn main() -> ExitCode {
 
 /// Top-level command line: `pne-profiler <SUBCOMMAND>`.
 #[derive(Parser, Debug)]
-#[command(name = "prof", version, about = "A lightweight HPC profiler")]
+#[command(version, about = "A lightweight HPC profiler")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

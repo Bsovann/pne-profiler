@@ -1,6 +1,6 @@
 ---
 Trivial_Changes:
-  - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, non-zero exit propagation, and command-not-found.
+  - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, the documented run -- ./program args form, non-zero exit propagation, and command-not-found.
 Minor_Changes:
   - (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.
   - (pne-cli) - added spawning of the target command with inherited stdio.
