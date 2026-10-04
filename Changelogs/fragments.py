@@ -3,17 +3,22 @@
 
 Each ticket branch adds one fragment, Changelogs/ChangeFragments/<JIRA-KEY>.yml,
 copied from PG-0000-Template.yml. The reviewer folds approved fragments into
-the release candidate's changelog.yml:
+changelog.yml:
 
     Changelogs/fragments.py check            # validate fragments and changelog.yml (CI)
     Changelogs/fragments.py fold --dry-run   # show what would be folded
     Changelogs/fragments.py fold             # append to changelog.yml, delete fragments
 
-Folding also sets Version in changelog.yml and Cargo.toml: the last released
-version (the newest %changelog entry in the RPM spec) bumped by the most
-significant section changelog.yml now has. Major_Changes bumps X.0.0,
-Minor_Changes 0.X.0, Bug_Fixes 0.0.X, and Trivial_Changes alone bumps nothing.
-Before the first release, Version is left as set.
+changelog.yml holds one YAML document per release, oldest first. Every release
+but the last has a Release_Date; the last is the one in progress, with
+Release_Date: TBD. Fragments fold into that last release. Once it has a date
+(it was released), the next fold starts a new release document after it.
+
+Folding also sets Version in changelog.yml and Cargo.toml: the previous
+release's Version bumped by the most significant section the current release
+has. Major_Changes bumps X.0.0, Minor_Changes 0.X.0, Bug_Fixes 0.0.X, and
+Trivial_Changes alone bumps nothing. For the first release, Version is left
+as set.
 
 Requires PyYAML (Fedora: python3-pyyaml).
 """
@@ -29,12 +34,12 @@ ROOT = Path(__file__).resolve().parent.parent
 DIR = ROOT / "Changelogs" / "ChangeFragments"
 TEMPLATE = DIR / "PG-0000-Template.yml"
 CHANGELOG = DIR / "changelog.yml"
-SPEC = ROOT / "RPM" / "pne-profiler.spec"
 CARGO = ROOT / "Cargo.toml"
 
 # Same order as the template. RPM/update-changelog.py keeps its own copy.
 SECTIONS = ["Trivial_Changes", "Major_Changes", "Minor_Changes", "Bug_Fixes"]
 CHANGELOG_KEYS = ["Version", "Release_Date"]
+UNRELEASED = "TBD"
 
 # Jira issue keys look like PROJECT-123.
 FRAGMENT_NAME = re.compile(r"^[A-Z][A-Z0-9]+-\d+\.yml$")
@@ -42,8 +47,8 @@ FRAGMENT_NAME = re.compile(r"^[A-Z][A-Z0-9]+-\d+\.yml$")
 ENTRY = re.compile(r"^\([^()]+\) - \S.*$")
 # The X.Y.Z at the start of a version; RPM pre-releases add e.g. ~rc1.
 SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
-# A spec %changelog header ends in "- VERSION-RELEASE"; the newest comes first.
-RELEASED = re.compile(r"(?m)^\* .* - (\S+)-[^-\s]+$")
+# A "---" line starts each release document in changelog.yml.
+DOC_START = re.compile(r"(?m)^---[ \t]*\n?")
 
 
 def fragments():
@@ -60,31 +65,55 @@ def load(path):
     return data, []
 
 
-def check_sections(path, data, extra_keys=()):
+def split_releases(text):
+    """The text of each release document in changelog.yml, oldest first."""
+    return [doc for doc in DOC_START.split(text) if doc.strip()]
+
+
+def load_releases():
+    """Parse changelog.yml into (texts, releases), or return ([], [], errors)."""
+    texts = split_releases(CHANGELOG.read_text())
+    if not texts:
+        return [], [], [f"{CHANGELOG.name}: has no release documents"]
+    releases = []
+    for i, text in enumerate(texts, 1):
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            return [], [], [f"{CHANGELOG.name}: release #{i}: invalid YAML: {e}"]
+        if not isinstance(data, dict):
+            return [], [], [f"{CHANGELOG.name}: release #{i}: expected a mapping"]
+        releases.append(data)
+    return texts, releases, []
+
+
+def is_released(release):
+    return str(release.get("Release_Date", UNRELEASED)).strip() != UNRELEASED
+
+
+def check_sections(name, data, extra_keys=()):
     errors = []
     for key, value in data.items():
         if key in extra_keys:
             continue
         if key not in SECTIONS:
             errors.append(
-                f"{path.name}: unknown key {key!r} (expected one of {', '.join(SECTIONS)})"
+                f"{name}: unknown key {key!r} (expected one of {', '.join(SECTIONS)})"
             )
             continue
         if not isinstance(value, list) or not value:
-            errors.append(f"{path.name}: {key} must be a non-empty list")
+            errors.append(f"{name}: {key} must be a non-empty list")
             continue
         for entry in value:
             if isinstance(entry, dict):
-                errors.append(
-                    f"{path.name}: {key}: an entry containing ': ' must be quoted"
-                )
+                errors.append(f"{name}: {key}: an entry containing ': ' must be quoted")
             elif not isinstance(entry, str) or not ENTRY.match(entry.strip()):
                 errors.append(
-                    f"{path.name}: {key}: {entry!r} does not match "
+                    f"{name}: {key}: {entry!r} does not match "
                     "'(component) - (verb past tense) (description)'"
                 )
             elif entry.strip().startswith("(component)"):
-                errors.append(f"{path.name}: {key}: template placeholder left in")
+                errors.append(f"{name}: {key}: template placeholder left in")
     return errors
 
 
@@ -97,17 +126,20 @@ def check_fragment(path):
         return errors + load_errors
     if not any(k in SECTIONS for k in data):
         errors.append(f"{path.name}: has no changelog sections")
-    return errors + check_sections(path, data)
+    return errors + check_sections(path.name, data)
 
 
 def check_changelog():
-    data, errors = load(CHANGELOG)
-    if errors:
-        return errors
-    for key in CHANGELOG_KEYS:
-        if key not in data:
-            errors.append(f"{CHANGELOG.name}: missing {key}")
-    return errors + check_sections(CHANGELOG, data, extra_keys=CHANGELOG_KEYS)
+    _, releases, errors = load_releases()
+    for i, release in enumerate(releases, 1):
+        name = f"{CHANGELOG.name}: release #{i} ({release.get('Version', '?')})"
+        for key in CHANGELOG_KEYS:
+            if key not in release:
+                errors.append(f"{name}: missing {key}")
+        if i < len(releases) and not is_released(release):
+            errors.append(f"{name}: only the last release may have Release_Date: TBD")
+        errors += check_sections(name, release, extra_keys=CHANGELOG_KEYS)
+    return errors
 
 
 def cmd_check(_args):
@@ -122,17 +154,11 @@ def cmd_check(_args):
     return 0
 
 
-def last_release():
-    """Version of the newest %changelog entry in the spec, or None before the first release."""
-    m = RELEASED.search(SPEC.read_text())
-    return m.group(1) if m else None
-
-
-def next_version(released, data):
-    """Bump `released` by the most significant section with entries in `data`."""
-    m = SEMVER.match(released)
+def next_version(previous, data):
+    """Bump `previous` by the most significant section with entries in `data`."""
+    m = SEMVER.match(previous)
     if not m:
-        raise ValueError(f"{SPEC.name}: released version {released!r} is not X.Y.Z")
+        raise ValueError(f"{CHANGELOG.name}: previous Version {previous!r} is not X.Y.Z")
     major, minor, patch = map(int, m.groups())
     if data.get("Major_Changes"):
         return f"{major + 1}.0.0"
@@ -140,7 +166,7 @@ def next_version(released, data):
         return f"{major}.{minor + 1}.0"
     if data.get("Bug_Fixes"):
         return f"{major}.{minor}.{patch + 1}"
-    return released
+    return previous
 
 
 def set_cargo_version(version):
@@ -163,18 +189,21 @@ class _IndentedDumper(yaml.SafeDumper):
         return super().increase_indent(flow, False)
 
 
-def dump_changelog(data):
+def dump_release(data):
     # Release_Date is written back unquoted whether it is TBD or a date.
     ordered = {k: data[k] for k in CHANGELOG_KEYS if k in data}
     ordered.update((s, data[s]) for s in SECTIONS if data.get(s))
     return yaml.dump(
         ordered,
         Dumper=_IndentedDumper,
-        explicit_start=True,
         sort_keys=False,
         width=1000,
         allow_unicode=True,
     )
+
+
+def join_releases(texts):
+    return "".join(f"---\n{text.rstrip()}\n" for text in texts)
 
 
 def cmd_fold(args):
@@ -192,28 +221,37 @@ def cmd_fold(args):
         print("fix the errors above before folding", file=sys.stderr)
         return 1
 
-    data, _ = load(CHANGELOG)
+    # Released documents are kept as written; only the last one is rewritten.
+    texts, releases, _ = load_releases()
+    started = is_released(releases[-1])
+    if started:
+        releases.append({"Version": str(releases[-1]["Version"]), "Release_Date": UNRELEASED})
+        texts.append("")
+    current = releases[-1]
+
     for path in paths:
         fragment, _ = load(path)
         for section in SECTIONS:
-            data.setdefault(section, []).extend(e.strip() for e in fragment.get(section) or [])
+            current.setdefault(section, []).extend(
+                e.strip() for e in fragment.get(section) or []
+            )
 
-    old_version = str(data["Version"])
-    released = last_release()
-    if released is None:
+    old_version = str(current["Version"])
+    if len(releases) == 1:
         version = old_version
-        version_note = f"Version: {version} (no release in {SPEC.name} yet, left as set)"
+        version_note = f"Version: {version} (first release, left as set)"
     else:
+        previous = str(releases[-2]["Version"])
         try:
-            version = next_version(released, data)
+            version = next_version(previous, current)
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        version_note = f"Version: {old_version} -> {version} (last release {released})"
-        if version == released:
-            version_note += "\nnote: only Trivial_Changes since the last release, so no bump"
-    data["Version"] = version
-    output = dump_changelog(data)
+        version_note = f"Version: {old_version} -> {version} (previous release {previous})"
+        if version == previous:
+            version_note += "\nnote: only Trivial_Changes since the previous release, so no bump"
+    current["Version"] = version
+    texts[-1] = dump_release(current)
 
     if not args.dry_run:
         try:
@@ -221,15 +259,17 @@ def cmd_fold(args):
         except ValueError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
-        CHANGELOG.write_text(output)
+        CHANGELOG.write_text(join_releases(texts))
         for path in paths:
             path.unlink()
 
+    if started:
+        print(f"{releases[-2]['Version']} is released; started a new release after it")
     for path in paths:
         print(f"{'would fold' if args.dry_run else 'folded'} {path.name}")
     print(version_note)
     if args.dry_run:
-        print(f"\n{CHANGELOG.name} would become:\n{output}", end="")
+        print(f"\nthe current release would become:\n---\n{texts[-1]}", end="")
     return 0
 
 
