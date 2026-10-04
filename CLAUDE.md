@@ -62,5 +62,5 @@ Work flows ticket branch → `rc/vX.Y.Z` → `master`:
 
    Sections: `Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`; pick the one matching the change type. Quote an entry that contains `: `, or YAML parses it as a mapping.
 3. The ticket branch is PR'd into the rc branch and reviewed by the maintainer.
-4. The maintainer folds approved fragments into the rc's single `changelog.yml` (which also carries `Version` and `Release_Date`) with `Changelogs/fragments.py fold`; this deletes the folded fragments. Don't edit `changelog.yml` from a ticket branch.
+4. The maintainer folds approved fragments into the rc's single `changelog.yml` (which also carries `Version` and `Release_Date`) with `Changelogs/fragments.py fold`; this deletes the folded fragments and sets `Version` in `changelog.yml` and `Cargo.toml` by bumping the last released version (newest spec `%changelog` entry) by the most significant section present: major, minor, or patch for `Major_Changes`, `Minor_Changes`, `Bug_Fixes`. Don't edit `changelog.yml` from a ticket branch.
 5. At release, `RPM/update-changelog.py` turns `changelog.yml` into the RPM `%changelog` entry (see README "Releasing"), and the rc branch is merged to `master` and tagged.
