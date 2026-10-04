@@ -70,6 +70,13 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    git commit -m "SCRUM-10: ..."
    ```
 
+   A `commit-msg` hook rejects messages that don't start with `SCRUM-<n>: `.
+   Enable it once per clone:
+
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
 2. Record your changes in `Changelogs/ChangeFragments/SCRUM-10.yml`, copied
    from `PG-0000-Template.yml`. Keep only the sections that apply
    (`Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`) and
