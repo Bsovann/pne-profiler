@@ -1,5 +1,6 @@
 ---
 Trivial_Changes:
+  - (Git) - added a commit-msg hook in .githooks that rejects messages not starting with a SCRUM-<n> Jira key.
   - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, the documented run -- ./program args form, non-zero exit propagation, and command-not-found.
 Minor_Changes:
   - (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.

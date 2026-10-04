@@ -64,7 +64,7 @@ pub enum Commands {
         /// The command to run, followed by its arguments
         // allow_hyphen_values passes flags like `-la` or `--help` through to the
         // target instead of having clap treat them as pne-profiler's own options.
-        #[arg(required = true, trailing_var_arg = false, allow_hyphen_values = true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         cmd: Vec<OsString>,
     },
 }
