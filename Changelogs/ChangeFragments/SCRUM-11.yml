@@ -1,0 +1,7 @@
+---
+Trivial_Changes:
+  - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, non-zero exit propagation, and command-not-found.
+Minor_Changes:
+  - (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.
+  - (pne-cli) - added spawning of the target command with inherited stdio.
+  - (pne-cli) - exited with the target's exit code, 128 + signal when the target is killed, 127 when the command is not found, and 126 when it cannot be executed.
