@@ -1,0 +1,12 @@
+---
+Trivial_Changes:
+  - (Tests) - added pne-core unit tests for Bytes::from_kib, ResourceUsage::cpu_time, and RunStats::cpu_utilization.
+  - (Tests) - added pne-perf unit tests for wait4 covering exit codes, killing signals, max RSS, and a non-child PID.
+  - (Tests) - added CLI integration tests for the resource usage report on stderr and the 128 + signal exit code.
+  - (Docs) - documented in CLAUDE.md that pne-perf also hosts other raw syscalls such as wait4.
+Minor_Changes:
+  - (pne-core) - added the Bytes, ExitOutcome, ResourceUsage, and RunStats types for reporting the target's resource usage.
+  - (pne-core) - added Bytes::from_kib to convert kibibyte counts such as getrusage's ru_maxrss to bytes.
+  - (pne-core) - added ResourceUsage::cpu_time and RunStats::cpu_utilization, which returns CPU time over wall time or None for a zero wall time.
+  - (pne-perf) - added a safe wait4 wrapper over libc that reaps a child and returns its exit outcome, user and system CPU time, and max RSS.
+  - (pne-cli) - changed run to reap the target with wait4 and print its wall time, user and system CPU time, CPU usage, and max RSS to stderr after it exits.
