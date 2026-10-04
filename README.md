@@ -30,8 +30,8 @@ Changes for the current release candidate are tracked in
 `%changelog` entry is generated from that file:
 
 1. Fold any remaining ticket fragments into `changelog.yml` (see
-   Contribution), then fill in `Release_Date` (`YYYY-MM-DD`) and make sure
-   `Version` matches `[workspace.package] version` in `Cargo.toml`.
+   Contribution), then fill in `Release_Date` (`YYYY-MM-DD`). Folding sets
+   `Version` in both `changelog.yml` and `Cargo.toml`, so they already match.
 2. Preview the entry, then write it:
 
    ```bash
@@ -70,6 +70,13 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    git commit -m "SCRUM-10: ..."
    ```
 
+   A `commit-msg` hook rejects messages that don't start with `SCRUM-<n>: `.
+   Enable it once per clone:
+
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
 2. Record your changes in `Changelogs/ChangeFragments/SCRUM-10.yml`, copied
    from `PG-0000-Template.yml`. Keep only the sections that apply
    (`Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`) and
@@ -90,3 +97,20 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    Changelogs/fragments.py fold --dry-run
    Changelogs/fragments.py fold
    ```
+
+   Each fold also sets `Version` in `changelog.yml` and `[workspace.package]
+   version` in `Cargo.toml`. It takes the last released version, the newest
+   `%changelog` entry in `RPM/pne-profiler.spec`, and bumps it by the most
+   significant section `changelog.yml` now holds:
+
+   | Section            | Bump                 | 0.4.2 becomes |
+   |--------------------|----------------------|---------------|
+   | `Major_Changes`    | major, resets others | 1.0.0         |
+   | `Minor_Changes`    | minor, resets patch  | 0.5.0         |
+   | `Bug_Fixes`        | patch                | 0.4.3         |
+   | `Trivial_Changes`  | none                 | 0.4.2         |
+
+   The bump is computed from the last release, not from the previous fold,
+   so folding three minor tickets into one rc still gives 0.5.0. Before the
+   first release, `Version` is left as set. Commit `Cargo.lock` too after the
+   next build picks up the new version.

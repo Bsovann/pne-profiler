@@ -9,6 +9,12 @@ the release candidate's changelog.yml:
     Changelogs/fragments.py fold --dry-run   # show what would be folded
     Changelogs/fragments.py fold             # append to changelog.yml, delete fragments
 
+Folding also sets Version in changelog.yml and Cargo.toml: the last released
+version (the newest %changelog entry in the RPM spec) bumped by the most
+significant section changelog.yml now has. Major_Changes bumps X.0.0,
+Minor_Changes 0.X.0, Bug_Fixes 0.0.X, and Trivial_Changes alone bumps nothing.
+Before the first release, Version is left as set.
+
 Requires PyYAML (Fedora: python3-pyyaml).
 """
 
@@ -19,9 +25,12 @@ from pathlib import Path
 
 import yaml
 
-DIR = Path(__file__).resolve().parent / "ChangeFragments"
+ROOT = Path(__file__).resolve().parent.parent
+DIR = ROOT / "Changelogs" / "ChangeFragments"
 TEMPLATE = DIR / "PG-0000-Template.yml"
 CHANGELOG = DIR / "changelog.yml"
+SPEC = ROOT / "RPM" / "pne-profiler.spec"
+CARGO = ROOT / "Cargo.toml"
 
 # Same order as the template. RPM/update-changelog.py keeps its own copy.
 SECTIONS = ["Trivial_Changes", "Major_Changes", "Minor_Changes", "Bug_Fixes"]
@@ -31,6 +40,10 @@ CHANGELOG_KEYS = ["Version", "Release_Date"]
 FRAGMENT_NAME = re.compile(r"^[A-Z][A-Z0-9]+-\d+\.yml$")
 # (component) - (verb past tense) + (change description)
 ENTRY = re.compile(r"^\([^()]+\) - \S.*$")
+# The X.Y.Z at the start of a version; RPM pre-releases add e.g. ~rc1.
+SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)")
+# A spec %changelog header ends in "- VERSION-RELEASE"; the newest comes first.
+RELEASED = re.compile(r"(?m)^\* .* - (\S+)-[^-\s]+$")
 
 
 def fragments():
@@ -109,6 +122,41 @@ def cmd_check(_args):
     return 0
 
 
+def last_release():
+    """Version of the newest %changelog entry in the spec, or None before the first release."""
+    m = RELEASED.search(SPEC.read_text())
+    return m.group(1) if m else None
+
+
+def next_version(released, data):
+    """Bump `released` by the most significant section with entries in `data`."""
+    m = SEMVER.match(released)
+    if not m:
+        raise ValueError(f"{SPEC.name}: released version {released!r} is not X.Y.Z")
+    major, minor, patch = map(int, m.groups())
+    if data.get("Major_Changes"):
+        return f"{major + 1}.0.0"
+    if data.get("Minor_Changes"):
+        return f"{major}.{minor + 1}.0"
+    if data.get("Bug_Fixes"):
+        return f"{major}.{minor}.{patch + 1}"
+    return released
+
+
+def set_cargo_version(version):
+    lines = CARGO.read_text().splitlines(keepends=True)
+    section = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped
+        elif section == "[workspace.package]" and re.match(r"version\s*=", stripped):
+            lines[i] = f'version = "{version}"\n'
+            CARGO.write_text("".join(lines))
+            return
+    raise ValueError(f"{CARGO.name}: no version in [workspace.package]")
+
+
 class _IndentedDumper(yaml.SafeDumper):
     # Indent list items under their key, matching the template's style.
     def increase_indent(self, flow=False, indentless=False):
@@ -149,16 +197,39 @@ def cmd_fold(args):
         fragment, _ = load(path)
         for section in SECTIONS:
             data.setdefault(section, []).extend(e.strip() for e in fragment.get(section) or [])
-        print(f"{'would fold' if args.dry_run else 'folded'} {path.name}")
 
+    old_version = str(data["Version"])
+    released = last_release()
+    if released is None:
+        version = old_version
+        version_note = f"Version: {version} (no release in {SPEC.name} yet, left as set)"
+    else:
+        try:
+            version = next_version(released, data)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        version_note = f"Version: {old_version} -> {version} (last release {released})"
+        if version == released:
+            version_note += "\nnote: only Trivial_Changes since the last release, so no bump"
+    data["Version"] = version
     output = dump_changelog(data)
+
+    if not args.dry_run:
+        try:
+            set_cargo_version(version)
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        CHANGELOG.write_text(output)
+        for path in paths:
+            path.unlink()
+
+    for path in paths:
+        print(f"{'would fold' if args.dry_run else 'folded'} {path.name}")
+    print(version_note)
     if args.dry_run:
         print(f"\n{CHANGELOG.name} would become:\n{output}", end="")
-        return 0
-
-    CHANGELOG.write_text(output)
-    for path in paths:
-        path.unlink()
     return 0
 
 
