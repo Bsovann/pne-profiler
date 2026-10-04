@@ -25,13 +25,30 @@ cargo build --release
 
 ## Releasing
 
-Changes for the current release candidate are tracked in
-`Changelogs/ChangeFragments/changelog.yml`. When releasing, the RPM spec's
-`%changelog` entry is generated from that file:
+`Changelogs/ChangeFragments/changelog.yml` keeps every release's changes,
+one YAML document per release, oldest first. The last document is the
+release in progress:
+
+```yaml
+---
+Version: 0.1.0
+Release_Date: 2026-10-30
+Minor_Changes:
+  - (RPM) - added an RPM spec for packaging the pne-profiler binary.
+---
+Version: 0.2.0
+Release_Date: TBD
+Minor_Changes:
+  - (pne-perf) - added hardware counter sampling.
+```
+
+When releasing, the RPM spec's `%changelog` entry is generated from that last
+document:
 
 1. Fold any remaining ticket fragments into `changelog.yml` (see
-   Contribution), then fill in `Release_Date` (`YYYY-MM-DD`). Folding sets
-   `Version` in both `changelog.yml` and `Cargo.toml`, so they already match.
+   Contribution), then replace the last document's `Release_Date: TBD` with
+   the date (`YYYY-MM-DD`). Folding sets `Version` in both `changelog.yml`
+   and `Cargo.toml`, so they already match.
 2. Preview the entry, then write it:
 
    ```bash
@@ -98,10 +115,14 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    Changelogs/fragments.py fold
    ```
 
-   Each fold also sets `Version` in `changelog.yml` and `[workspace.package]
-   version` in `Cargo.toml`. It takes the last released version, the newest
-   `%changelog` entry in `RPM/pne-profiler.spec`, and bumps it by the most
-   significant section `changelog.yml` now holds:
+   Fragments go into the last document in `changelog.yml`. If that release
+   already has a `Release_Date`, it has shipped, so the fold starts a new
+   `Release_Date: TBD` document after it. Earlier releases are never changed.
+
+   Each fold also sets the current release's `Version` and
+   `[workspace.package] version` in `Cargo.toml`. It takes the previous
+   release's `Version` and bumps it by the most significant section the
+   current release holds:
 
    | Section            | Bump                 | 0.4.2 becomes |
    |--------------------|----------------------|---------------|
@@ -110,7 +131,7 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    | `Bug_Fixes`        | patch                | 0.4.3         |
    | `Trivial_Changes`  | none                 | 0.4.2         |
 
-   The bump is computed from the last release, not from the previous fold,
-   so folding three minor tickets into one rc still gives 0.5.0. Before the
-   first release, `Version` is left as set. Commit `Cargo.lock` too after the
+   The bump is computed from the previous release, not from the previous
+   fold, so folding three minor tickets into one rc still gives 0.5.0. For
+   the first release, `Version` is left as set. Commit `Cargo.lock` too after the
    next build picks up the new version.

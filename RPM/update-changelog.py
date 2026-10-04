@@ -6,11 +6,11 @@ Run at release time, after filling in Release_Date in changelog.yml:
     RPM/update-changelog.py            # update RPM/pne-profiler.spec
     RPM/update-changelog.py --dry-run  # print the entry only
 
-It sets the spec's Version from changelog.yml, resets Release to 1, and
-prepends one %changelog entry built from the changelog sections. It refuses
-to run if ticket fragments haven't been folded in yet (Changelogs/fragments.py
-fold), if Release_Date is unset, if Version disagrees with Cargo.toml, or if
-the spec already has an entry for that version-release.
+It sets the spec's Version from the last release in changelog.yml, resets
+Release to 1, and prepends one %changelog entry built from its sections. It
+refuses to run if ticket fragments haven't been folded in yet
+(Changelogs/fragments.py fold), if Release_Date is unset, if Version disagrees
+with Cargo.toml, or if the spec already has an entry for that version-release.
 
 Requires PyYAML (Fedora: python3-pyyaml).
 """
@@ -48,9 +48,16 @@ def git_config(key):
 
 
 def load_changelog():
-    data = yaml.safe_load(CHANGELOG.read_text())
+    # changelog.yml holds one document per release, oldest first; release the last.
+    try:
+        releases = [r for r in yaml.safe_load_all(CHANGELOG.read_text()) if r is not None]
+    except yaml.YAMLError as e:
+        fail(f"{CHANGELOG}: invalid YAML: {e}")
+    if not releases:
+        fail(f"{CHANGELOG} has no release documents")
+    data = releases[-1]
     if not isinstance(data, dict):
-        fail(f"{CHANGELOG} is not a YAML mapping")
+        fail(f"{CHANGELOG}: the last release is not a YAML mapping")
 
     version = str(data.get("Version", "")).strip()
     if not version:
