@@ -1,0 +1,28 @@
+---
+Version: 0.1.0
+Release_Date: 2026-10-03
+Trivial_Changes:
+  - (README) - documented the release steps for generating the RPM changelog.
+  - (Docs) - documented the ticket branch, fragment, and review workflow in README and CLAUDE.md.
+  - (Git) - added a commit-msg hook in .githooks that rejects messages not starting with a SCRUM-<n> Jira key.
+  - (Tests) - added CLI integration tests covering --version, a successful run with hyphenated args, the documented run -- ./program args form, non-zero exit propagation, and command-not-found.
+  - (Docs) - documented the per-release changelog.yml format and fold flow in README and CLAUDE.md.
+Minor_Changes:
+  - (CI) - added a typos spell-check job to the CI pipeline.
+  - (RPM) - added an RPM spec for packaging the pne-profiler binary.
+  - (RPM) - added update-changelog.py to generate the spec's %changelog entry from changelog.yml.
+  - (Changelog) - added fragments.py to validate ticket fragments and fold them into changelog.yml.
+  - (CI) - added a changelog workflow that requires a valid fragment on PRs to rc branches.
+  - (Changelog) - renamed the template's Trivial Changes key to Trivial_Changes.
+  - (Licensing) - added the Apache-2.0 LICENSE and set the license in Cargo.toml and the RPM spec.
+  - (Toolchain) - pinned the Rust toolchain to 1.98.1 in rust-toolchain.toml and CI.
+  - (CI) - pinned third-party actions to commit SHAs, limited workflow permissions to contents read, and enabled Dependabot for GitHub Actions.
+  - (Changelog) - made fragments.py fold set Version in changelog.yml and Cargo.toml by bumping the last released version by major, minor, or patch.
+  - (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.
+  - (pne-cli) - added spawning of the target command with inherited stdio.
+  - (pne-cli) - exited with the target's exit code, 128 + signal when the target is killed, 127 when the command is not found, and 126 when it cannot be executed.
+  - (Changelog) - changed changelog.yml to keep one YAML document per release, oldest first, instead of a single release.
+  - (Changelog) - made fragments.py fold into the last release and start a new Release_Date TBD release once the last one has a date.
+  - (Changelog) - changed fold to bump Version from the previous release in changelog.yml instead of the RPM spec's newest %changelog entry.
+  - (Changelog) - made fragments.py check validate every release and reject a TBD Release_Date on any release but the last.
+  - (RPM) - changed update-changelog.py to build the %changelog entry from the last release in changelog.yml.

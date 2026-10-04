@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [[bin]]
 name = "pne-profiler"
@@ -13,6 +14,7 @@ path = "src/main.rs"
 pne-core.workspace = true
 pne-perf.workspace = true
 pne-energy.workspace = true
+clap.workspace = true
 
 [lints]
 workspace = true

@@ -8,11 +8,13 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 publish = false
+license = "Apache-2.0"
 
 [workspace.dependencies]
 pne-core = { path = "crates/pne-core" }
 pne-perf = { path = "crates/pne-perf" }
 pne-energy = { path = "crates/pne-energy" }
+clap = { version = "4.6.7", features = ["derive"] }
 
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
