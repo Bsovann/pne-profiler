@@ -42,25 +42,72 @@ Minor_Changes:
   - (pne-perf) - added hardware counter sampling.
 ```
 
-When releasing, the RPM spec's `%changelog` entry is generated from that last
-document:
+A release ships the last document. Run these steps on the rc branch
+(`rc/vX.Y.Z`) after every ticket PR for the release has been merged into it.
+Commit messages still need the `SCRUM-<n>: ` prefix (see Contribution), so use
+the ticket that tracks the release.
 
-1. Fold any remaining ticket fragments into `changelog.yml` (see
-   Contribution), then replace the last document's `Release_Date: TBD` with
-   the date (`YYYY-MM-DD`). Folding sets `Version` in both `changelog.yml`
-   and `Cargo.toml`, so they already match.
-2. Preview the entry, then write it:
+1. Fold any remaining ticket fragments and commit the result. Folding sets
+   `Version` in both `changelog.yml` and `Cargo.toml`, so they already match.
 
    ```bash
-   RPM/update-changelog.py --dry-run
-   RPM/update-changelog.py
+   git switch rc/vX.Y.Z && git pull
+   Changelogs/fragments.py fold --dry-run
+   Changelogs/fragments.py fold
+   cargo build                         # updates Cargo.lock to the new version
+   git add Changelogs/ChangeFragments/ Cargo.toml Cargo.lock
+   git commit -m "SCRUM-<n>: folded changelog fragments for X.Y.Z"
    ```
 
-3. The script sets `Version` in `RPM/pne-profiler.spec`, resets `Release` to
-   `1`, and prepends a `%changelog` entry built from the changelog sections,
-   using your git `user.name` and `user.email` as the packager.
+2. In `changelog.yml`, replace the last document's `Release_Date: TBD` with
+   today's date as `YYYY-MM-DD`, e.g. `Release_Date: 2026-10-03`.
 
-The script refuses to run when:
+3. Generate the RPM `%changelog` entry and check the spec:
+
+   ```bash
+   RPM/update-changelog.py --dry-run   # preview the entry
+   RPM/update-changelog.py             # write RPM/pne-profiler.spec
+   git diff RPM/pne-profiler.spec
+   ```
+
+   The script sets `Version` in `RPM/pne-profiler.spec`, resets `Release` to
+   `1`, and prepends a `%changelog` entry built from the last release's
+   sections. It uses your git `user.name` and `user.email` as the packager,
+   so set those to the identity the RPM should carry.
+
+   Only entries for the shipped code go into the RPM: those whose component
+   is a crate, such as `(pne-cli)` or `(pne-perf)`. Tooling entries like
+   `(CI)`, `(RPM)`, `(Changelog)`, `(Licensing)` or `(Tests)` stay in
+   `changelog.yml` only. If a release has no crate entries, the RPM entry
+   reads "No changes to the packaged software."
+
+4. Commit and push the release, then wait for CI to pass on the rc branch:
+
+   ```bash
+   git add Changelogs/ChangeFragments/changelog.yml RPM/pne-profiler.spec
+   git commit -m "SCRUM-<n>: release X.Y.Z"
+   git push origin rc/vX.Y.Z
+   ```
+
+5. Open a PR from the rc branch into `master` and merge it once CI is green.
+   The changelog check only runs on PRs into `rc/**`, so this PR needs no
+   fragment.
+
+   ```bash
+   gh pr create --base master --head rc/vX.Y.Z --title "Release X.Y.Z"
+   ```
+
+6. Tag the merge on `master`:
+
+   ```bash
+   git switch master && git pull
+   git tag -a vX.Y.Z -m "pne-profiler X.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+7. Build the RPM from `RPM/pne-profiler.spec` if you're publishing a package.
+
+`RPM/update-changelog.py` refuses to run when:
 
 - Ticket fragments are still waiting to be folded.
 - `Release_Date` is missing or still `TBD`.
@@ -73,6 +120,14 @@ The script needs Python 3.11+ and PyYAML (Fedora: `python3-pyyaml`).
 
 For a packaging-only change (same code, spec fix), bump `Release` in the spec
 and add the `%changelog` entry by hand.
+
+### After a release
+
+For the next release, branch a new rc off `master`, named after the version
+you expect, e.g. `rc/v0.2.0`. The first fold after a release starts a new
+`Release_Date: TBD` document, and the folded tickets decide the actual
+version. If they turn out to need a different bump than the branch name
+says, the version in `changelog.yml` is the one that ships.
 
 ## Contribution
 
@@ -98,7 +153,9 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    from `PG-0000-Template.yml`. Keep only the sections that apply
    (`Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`) and
    write each entry as `- (component) - (verb past tense) (description)`.
-   Quote an entry that contains `: `. Don't edit `changelog.yml` directly.
+   For a change to the shipped code, use the crate name as the component,
+   e.g. `(pne-cli)`; only those entries reach the RPM changelog. Quote an
+   entry that contains `: `. Don't edit `changelog.yml` directly.
 3. Check the fragment, then open a PR into the rc branch:
 
    ```bash

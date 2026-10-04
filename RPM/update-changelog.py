@@ -7,8 +7,10 @@ Run at release time, after filling in Release_Date in changelog.yml:
     RPM/update-changelog.py --dry-run  # print the entry only
 
 It sets the spec's Version from the last release in changelog.yml, resets
-Release to 1, and prepends one %changelog entry built from its sections. It
-refuses to run if ticket fragments haven't been folded in yet
+Release to 1, and prepends one %changelog entry built from its sections. Only
+entries for the shipped code, components named after a pne-* crate such as
+(pne-cli), go into the RPM; tooling entries like (CI), (RPM), (Changelog) or
+(Licensing) stay in changelog.yml only. It refuses to run if ticket fragments haven't been folded in yet
 (Changelogs/fragments.py fold), if Release_Date is unset, if Version disagrees
 with Cargo.toml, or if the spec already has an entry for that version-release.
 
@@ -34,6 +36,10 @@ CARGO = ROOT / "Cargo.toml"
 
 # Same keys as Changelogs/fragments.py, most significant first.
 SECTIONS = ["Major_Changes", "Minor_Changes", "Bug_Fixes", "Trivial_Changes"]
+# Entries whose component is a crate under crates/ change what the RPM ships.
+PRODUCT_ENTRY = re.compile(r"^\(pne-[a-z0-9-]+\) - ")
+# An RPM %changelog entry needs at least one line.
+NO_PRODUCT_CHANGES = "No changes to the packaged software."
 
 
 def fail(msg):
@@ -134,6 +140,14 @@ def main():
     version, date, entries = load_changelog()
     check_cargo_version(version)
 
+    product = [e for e in entries if PRODUCT_ENTRY.match(e)]
+    skipped = len(entries) - len(product)
+    if skipped:
+        print(f"skipping {skipped} tooling entries (not pne-*)", file=sys.stderr)
+    if not product:
+        print(f"no pne-* entries; using {NO_PRODUCT_CHANGES!r}", file=sys.stderr)
+        product = [NO_PRODUCT_CHANGES]
+
     release = 1
     spec = SPEC.read_text()
     if re.search(rf"(?m)^\*.* - {re.escape(version)}-{release}$", spec):
@@ -143,7 +157,7 @@ def main():
     if not name or not email:
         fail("set git user.name and user.email; they are used as the packager")
 
-    entry = render_entry(version, release, date, entries, f"{name} <{email}>")
+    entry = render_entry(version, release, date, product, f"{name} <{email}>")
     if args.dry_run:
         print(entry, end="")
         return

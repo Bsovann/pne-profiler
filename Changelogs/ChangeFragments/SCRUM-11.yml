@@ -1,9 +1,0 @@
----
-Trivial_Changes:
-  - (Docs) - documented the per-release changelog.yml format and fold flow in README and CLAUDE.md.
-Minor_Changes:
-  - (Changelog) - changed changelog.yml to keep one YAML document per release, oldest first, instead of a single release.
-  - (Changelog) - made fragments.py fold into the last release and start a new Release_Date TBD release once the last one has a date.
-  - (Changelog) - changed fold to bump Version from the previous release in changelog.yml instead of the RPM spec's newest %changelog entry.
-  - (Changelog) - made fragments.py check validate every release and reject a TBD Release_Date on any release but the last.
-  - (RPM) - changed update-changelog.py to build the %changelog entry from the last release in changelog.yml.

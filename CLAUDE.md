@@ -60,7 +60,7 @@ Work flows ticket branch → `rc/vX.Y.Z` → `master`:
    - (component) - (verb past tense) + (change description)
    ```
 
-   Sections: `Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`; pick the one matching the change type. Quote an entry that contains `: `, or YAML parses it as a mapping.
+   Sections: `Trivial_Changes`, `Major_Changes`, `Minor_Changes`, `Bug_Fixes`; pick the one matching the change type. For changes to shipped code, the component must be the crate name (`(pne-cli)`, `(pne-perf)`, ...): `RPM/update-changelog.py` only copies `pne-*` entries into the RPM `%changelog`, and tooling components (`CI`, `RPM`, `Changelog`, `Licensing`, `Tests`, ...) stay in `changelog.yml`. Quote an entry that contains `: `, or YAML parses it as a mapping.
 3. The ticket branch is PR'd into the rc branch and reviewed by the maintainer.
 4. The maintainer folds approved fragments into `changelog.yml` with `Changelogs/fragments.py fold`, which deletes the folded fragments. `changelog.yml` holds one YAML document per release (`Version`, `Release_Date`, sections), oldest first. Fragments fold into the last document; if it already has a `Release_Date`, the fold starts a new `Release_Date: TBD` document. Folding sets the current release's `Version` (and `Cargo.toml`'s) by bumping the previous release's `Version` by the most significant section present: major, minor, or patch for `Major_Changes`, `Minor_Changes`, `Bug_Fixes`. Don't edit `changelog.yml` from a ticket branch.
 5. At release, the last document's `Release_Date` is filled in and `RPM/update-changelog.py` turns that document into the RPM `%changelog` entry (see README "Releasing"), and the rc branch is merged to `master` and tagged.

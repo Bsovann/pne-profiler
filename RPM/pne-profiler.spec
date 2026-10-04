@@ -56,3 +56,8 @@ cargo test --release --locked --offline --workspace
 # release time by RPM/update-changelog.py. Add one by hand only for a
 # packaging-only change (bump Release, keep Version).
 %changelog
+* Sat Oct 03 2026 Bondith Sovann <bsovann04@gmail.com> - 0.1.0-1
+- (pne-cli) - added clap argument parsing with a run subcommand that forwards the target command and its arguments unchanged.
+- (pne-cli) - added spawning of the target command with inherited stdio.
+- (pne-cli) - exited with the target's exit code, 128 + signal when the target is killed, 127 when the command is not found, and 126 when it cannot be executed.
+
