@@ -64,6 +64,31 @@ fn run_target_nonzero_exit_is_propagated() {
 }
 
 #[test]
+fn run_target_killed_by_signal_exits_128_plus_signal() {
+    let output = prof(&["run", "sh", "-c", "kill -9 $$"]);
+
+    // SIGKILL is 9, so the shell convention gives 137.
+    assert_eq!(
+        output.status.code(),
+        Some(137),
+        "stderr: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn run_reports_resource_usage_on_stderr() {
+    let output = prof(&["run", "true"]);
+
+    let err = stderr(&output);
+    for field in ["wall time", "user time", "sys time", "CPU usage", "max RSS"] {
+        assert!(err.contains(field), "stderr missing {field:?}: {err}");
+    }
+    // The report must not mix into the target's stdout.
+    assert_eq!(stdout(&output), "");
+}
+
+#[test]
 fn run_target_command_not_found() {
     let output = prof(&["run", "pne-definitely-not-a-real-program"]);
 
