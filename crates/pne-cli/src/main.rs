@@ -48,7 +48,7 @@ fn run(cmd: &[OsString]) -> ExitCode {
     // Wait with wait4 rather than Child::wait so the kernel also hands back
     // the target's resource usage. This reaps the child, so `child` must not
     // be waited on again.
-    let (outcome, resource_usage) = match pne_perf::wait4(child.id()) {
+    let (outcome, resource_usage) = match pne_perf::wait4(child) {
         Ok(result) => result,
         Err(e) => {
             eprintln!("pne-profiler: waiting for {}: {e}", prog.to_string_lossy());
@@ -111,4 +111,46 @@ pub enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         cmd: Vec<OsString>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pne_core::{Bytes, ResourceUsage};
+    use std::time::Duration;
+
+    fn stats(wall_ms: u64, user_ms: u64, sys_ms: u64, max_rss: Bytes) -> RunStats {
+        RunStats {
+            wall_time: Duration::from_millis(wall_ms),
+            resource_usage: ResourceUsage {
+                user_time: Duration::from_millis(user_ms),
+                sys_time: Duration::from_millis(sys_ms),
+                max_rss,
+            },
+        }
+    }
+
+    #[test]
+    fn summary_converts_times_percent_and_mib() {
+        // 1.5 s of CPU over 2 s of wall time is 75%; 3 MiB + 512 KiB is 3.5 MiB.
+        let report = summary(&stats(2000, 1250, 250, Bytes::from_kib(3 * 1024 + 512)));
+
+        assert!(report.contains("wall time   2.000 s"), "{report}");
+        assert!(report.contains("user time   1.250 s"), "{report}");
+        assert!(report.contains("sys time    0.250 s"), "{report}");
+        assert!(report.contains("CPU usage   75%"), "{report}");
+        assert!(report.contains("max RSS     3.5 MiB"), "{report}");
+    }
+
+    #[test]
+    fn summary_shows_parallel_cpu_usage_above_100_percent() {
+        let report = summary(&stats(1000, 4000, 0, Bytes(0)));
+        assert!(report.contains("CPU usage   400%"), "{report}");
+    }
+
+    #[test]
+    fn summary_shows_na_for_zero_wall_time() {
+        let report = summary(&stats(0, 0, 0, Bytes(0)));
+        assert!(report.contains("CPU usage   n/a"), "{report}");
+    }
 }

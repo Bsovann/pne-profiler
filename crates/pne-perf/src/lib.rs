@@ -8,14 +8,15 @@ use pne_core::{Bytes, ExitOutcome, ResourceUsage};
 use std::io;
 use std::time::Duration;
 
-/// Waits for the child process `pid` to end and returns how it ended along
-/// with the CPU time and peak memory it used, as reported by `wait4(2)`.
+/// Waits for `child` to end and returns how it ended along with the CPU time
+/// and peak memory it used, as reported by `wait4(2)`.
 ///
-/// `pid` must be a child of this process that hasn't been waited on yet.
-/// The usage covers the child and any descendants it waited on itself.
-pub fn wait4(pid: u32) -> io::Result<(ExitOutcome, ResourceUsage)> {
-    let pid =
-        libc::pid_t::try_from(pid).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+/// Taking the `Child` by value means it can't be waited on again afterwards,
+/// which would fail since wait4 has already reaped it. The usage covers the
+/// child and any descendants it waited on itself.
+pub fn wait4(child: std::process::Child) -> io::Result<(ExitOutcome, ResourceUsage)> {
+    let pid = libc::pid_t::try_from(child.id())
+        .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
     let mut status: libc::c_int = 0;
     // SAFETY: rusage is a C struct of integers and timevals, for which all
     // zero bytes is a valid value.
@@ -66,10 +67,9 @@ mod tests {
     use super::*;
     use std::process::Command;
 
-    #[expect(clippy::zombie_processes, reason = "wait4 reaps the child")]
     fn run(script: &str) -> (ExitOutcome, ResourceUsage) {
         let child = Command::new("sh").args(["-c", script]).spawn().unwrap();
-        wait4(child.id()).unwrap()
+        wait4(child).unwrap()
     }
 
     #[test]
@@ -90,10 +90,48 @@ mod tests {
         assert!(usage.max_rss > Bytes(0));
     }
 
+    fn timeval(tv_sec: libc::time_t, tv_usec: libc::suseconds_t) -> libc::timeval {
+        libc::timeval { tv_sec, tv_usec }
+    }
+
     #[test]
-    fn non_child_pid_is_an_error() {
-        // PID 1 (init) is never our child, so wait4 fails with ECHILD.
-        let err = wait4(1).unwrap_err();
-        assert_eq!(err.raw_os_error(), Some(libc::ECHILD));
+    fn timeval_zero_is_zero_duration() {
+        assert_eq!(timeval_to_duration(timeval(0, 0)), Duration::ZERO);
+    }
+
+    #[test]
+    fn timeval_adds_seconds_and_microseconds() {
+        assert_eq!(
+            timeval_to_duration(timeval(2, 500_000)),
+            Duration::from_millis(2500)
+        );
+    }
+
+    #[test]
+    fn timeval_microseconds_are_not_milliseconds() {
+        // 1 µs must stay 1 µs: catches from_millis or from_nanos used by mistake.
+        assert_eq!(
+            timeval_to_duration(timeval(0, 1)),
+            Duration::from_nanos(1000)
+        );
+    }
+
+    #[test]
+    fn timeval_largest_microsecond_field_stays_below_next_second() {
+        // tv_usec tops out at 999_999, so it must not carry into a full second.
+        assert_eq!(
+            timeval_to_duration(timeval(3, 999_999)),
+            Duration::new(3, 999_999_000)
+        );
+    }
+
+    #[test]
+    fn timeval_handles_long_runs() {
+        // A 30-day job, far past where a 32-bit microsecond total would overflow.
+        let secs = 30 * 24 * 60 * 60;
+        assert_eq!(
+            timeval_to_duration(timeval(secs, 0)),
+            Duration::from_secs(secs as u64)
+        );
     }
 }
