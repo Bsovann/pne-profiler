@@ -36,9 +36,16 @@ Trivial_Changes:
   - (Tests) - added pne-cli unit tests for the resource usage report's seconds, CPU percentage, and MiB conversions.
   - (Tests) - added CLI integration tests for the resource usage report on stderr and the 128 + signal exit code.
   - (Docs) - documented in CLAUDE.md that pne-perf also hosts other raw syscalls such as wait4.
+  - (Tests) - added whole-string tests in pne-core for the resource usage report, covering a typical run, display rounding, CPU usage above 100%, and zero wall time.
+  - (Tests) - changed the CLI report integration test to compare the full stderr output with the numbers masked.
+  - (Tests) - added pne-perf tests for the WaitError messages and its OS error source.
+  - (Tests) - added a CLI integration test for exit code 126 when the target is not executable.
 Minor_Changes:
   - (pne-core) - added the Bytes, ExitOutcome, ResourceUsage, and RunStats types for reporting the target's resource usage.
   - (pne-core) - added Bytes::from_kib to convert kibibyte counts such as getrusage's ru_maxrss to bytes.
   - (pne-core) - added ResourceUsage::cpu_time and RunStats::cpu_utilization, which returns CPU time over wall time or None for a zero wall time.
   - (pne-perf) - added a safe wait4 wrapper over libc that takes ownership of a spawned Child, reaps it, and returns its exit outcome, user and system CPU time, and max RSS.
   - (pne-cli) - changed run to reap the target with wait4 and print its wall time, user and system CPU time, CPU usage, and max RSS to stderr after it exits.
+  - (pne-core) - moved the resource usage report into a Display impl on RunStats.
+  - (pne-perf) - changed wait4 to return a typed WaitError built with thiserror instead of io::Error.
+  - (pne-cli) - changed error handling to anyhow, printing each error with its full context chain while keeping exit codes 126 and 127 for targets that cannot be started.
