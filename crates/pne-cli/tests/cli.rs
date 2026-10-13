@@ -76,16 +76,64 @@ fn run_target_killed_by_signal_exits_128_plus_signal() {
     );
 }
 
+/// Replaces each run of digits with `N`, so a report from a real run can be
+/// compared as a whole string even though its numbers change every time.
+fn mask_numbers(text: &str) -> String {
+    let mut masked = String::new();
+    for c in text.chars() {
+        if !c.is_ascii_digit() {
+            masked.push(c);
+        } else if !masked.ends_with('N') {
+            masked.push('N');
+        }
+    }
+    masked
+}
+
 #[test]
 fn run_reports_resource_usage_on_stderr() {
     let output = prof(&["run", "true"]);
 
-    let err = stderr(&output);
-    for field in ["wall time", "user time", "sys time", "CPU usage", "max RSS"] {
-        assert!(err.contains(field), "stderr missing {field:?}: {err}");
-    }
+    // The exact numbers are checked by pne-core's report tests; this checks
+    // that the real binary prints that report, and nothing else, to stderr.
+    assert_eq!(
+        mask_numbers(&stderr(&output)),
+        "\n\
+         pne-profiler: resource usage\n\
+         \x20 wall time   N.N s\n\
+         \x20 user time   N.N s\n\
+         \x20 sys time    N.N s\n\
+         \x20 CPU usage   N%\n\
+         \x20 max RSS     N.N MiB\n"
+    );
     // The report must not mix into the target's stdout.
     assert_eq!(stdout(&output), "");
+}
+
+#[test]
+fn run_target_not_executable() {
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not_executable");
+    std::fs::create_dir_all(&dir).unwrap();
+    let program = dir.join("program");
+    std::fs::write(&program, "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let output = prof(&["run", program.to_str().unwrap()]);
+
+    // 126 is the shell convention for "found but cannot execute".
+    assert_eq!(
+        output.status.code(),
+        Some(126),
+        "stderr: {}",
+        stderr(&output)
+    );
+    // The OS's own wording follows, e.g. "Permission denied (os error 13)".
+    let expected = format!("pne-profiler: {}: cannot run: ", program.display());
+    assert!(
+        stderr(&output).starts_with(&expected),
+        "stderr should start with {expected:?}: {}",
+        stderr(&output)
+    );
 }
 
 #[test]
@@ -99,9 +147,10 @@ fn run_target_command_not_found() {
         "stderr: {}",
         stderr(&output)
     );
+    let expected = "pne-profiler: pne-definitely-not-a-real-program: cannot run: ";
     assert!(
-        stderr(&output).contains("pne-definitely-not-a-real-program"),
-        "stderr should name the missing program: {}",
+        stderr(&output).starts_with(expected),
+        "stderr should start with {expected:?}: {}",
         stderr(&output)
     );
 }
