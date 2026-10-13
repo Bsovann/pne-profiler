@@ -19,7 +19,7 @@ Planned technical areas, roughly in order: Linux `perf_event` and `/proc` → un
 A Cargo workspace under `crates/`. The dependency direction is `pne-cli` → {`pne-perf`, `pne-energy`} → `pne-core`.
 
 - `pne-core`: OS-independent shared types (samples, metrics, units, errors). Everything depends on it, and it depends on nothing.
-- `pne-perf`: `perf_event_open` FFI. **This is the only crate allowed to use `unsafe`.** The others declare `#![forbid(unsafe_code)]`. Every `unsafe` block needs a `// SAFETY:` comment (enforced by `clippy::undocumented_unsafe_blocks`).
+- `pne-perf`: `perf_event_open` FFI, plus other raw syscalls the profiler needs (e.g. `wait4` for the target's resource usage). **This is the only crate allowed to use `unsafe`.** The others declare `#![forbid(unsafe_code)]`. Every `unsafe` block needs a `// SAFETY:` comment (enforced by `clippy::undocumented_unsafe_blocks`).
 - `pne-energy`: RAPL via powercap sysfs, with GPU power APIs later.
 - `pne-cli`: builds the `pne-profiler` binary. It's the only default workspace member, so `cargo run` runs it.
 
