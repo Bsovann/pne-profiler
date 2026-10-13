@@ -8,15 +8,29 @@ use pne_core::{Bytes, ExitOutcome, ResourceUsage};
 use std::io;
 use std::time::Duration;
 
+/// Why [`wait4`] couldn't report on the child.
+#[derive(Debug, thiserror::Error)]
+pub enum WaitError {
+    /// The child's PID doesn't fit in `pid_t`, so it can't be passed to wait4.
+    #[error("pid {0} does not fit in pid_t")]
+    PidOutOfRange(u32),
+    /// The wait4 syscall itself failed, e.g. with `ECHILD`.
+    #[error("wait4 failed")]
+    Wait(#[source] io::Error),
+    /// wait4 returned a status that is neither an exit nor a killing signal.
+    #[error("unexpected wait status {0:#x}")]
+    UnexpectedStatus(libc::c_int),
+}
+
 /// Waits for `child` to end and returns how it ended along with the CPU time
 /// and peak memory it used, as reported by `wait4(2)`.
 ///
 /// Taking the `Child` by value means it can't be waited on again afterwards,
 /// which would fail since wait4 has already reaped it. The usage covers the
 /// child and any descendants it waited on itself.
-pub fn wait4(child: std::process::Child) -> io::Result<(ExitOutcome, ResourceUsage)> {
-    let pid = libc::pid_t::try_from(child.id())
-        .map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+pub fn wait4(child: std::process::Child) -> Result<(ExitOutcome, ResourceUsage), WaitError> {
+    let pid =
+        libc::pid_t::try_from(child.id()).map_err(|_| WaitError::PidOutOfRange(child.id()))?;
     let mut status: libc::c_int = 0;
     // SAFETY: rusage is a C struct of integers and timevals, for which all
     // zero bytes is a valid value.
@@ -32,7 +46,7 @@ pub fn wait4(child: std::process::Child) -> io::Result<(ExitOutcome, ResourceUsa
         // A signal arrived before the child ended; wait again.
         let err = io::Error::last_os_error();
         if err.kind() != io::ErrorKind::Interrupted {
-            return Err(err);
+            return Err(WaitError::Wait(err));
         }
     }
 
@@ -43,9 +57,7 @@ pub fn wait4(child: std::process::Child) -> io::Result<(ExitOutcome, ResourceUsa
     } else if libc::WIFSIGNALED(status) {
         ExitOutcome::Signaled(libc::WTERMSIG(status))
     } else {
-        return Err(io::Error::other(format!(
-            "unexpected wait status {status:#x}"
-        )));
+        return Err(WaitError::UnexpectedStatus(status));
     };
 
     let usage = ResourceUsage {
@@ -133,5 +145,27 @@ mod tests {
             timeval_to_duration(timeval(secs, 0)),
             Duration::from_secs(secs as u64)
         );
+    }
+
+    #[test]
+    fn wait_error_messages() {
+        assert_eq!(
+            WaitError::PidOutOfRange(u32::MAX).to_string(),
+            "pid 4294967295 does not fit in pid_t"
+        );
+        assert_eq!(
+            WaitError::UnexpectedStatus(0x137f).to_string(),
+            "unexpected wait status 0x137f"
+        );
+    }
+
+    #[test]
+    fn wait_error_keeps_the_os_error_as_its_source() {
+        use std::error::Error;
+
+        let err = WaitError::Wait(io::Error::from_raw_os_error(libc::ECHILD));
+        assert_eq!(err.to_string(), "wait4 failed");
+        let source = err.source().and_then(|s| s.downcast_ref::<io::Error>());
+        assert_eq!(source.and_then(io::Error::raw_os_error), Some(libc::ECHILD));
     }
 }
