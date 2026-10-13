@@ -1,7 +1,9 @@
 #![forbid(unsafe_code)]
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use pne_core::{ExitOutcome, RunStats};
 use std::ffi::OsString;
+use std::io;
 use std::process::{Command, ExitCode, Stdio};
 use std::time::Instant;
 
@@ -9,88 +11,70 @@ fn main() -> ExitCode {
     // On a usage error or --help/--version, clap prints and exits the process
     // itself, so past this line we always have a valid subcommand.
     let cli = Cli::parse();
-    match cli.command {
+    let result = match cli.command {
         Commands::Run { cmd } => run(&cmd),
-    }
+    };
+
+    // Not `fn main() -> anyhow::Result<..>`: returning Err from main always
+    // exits 1, but a target that can't be started should get the shell's
+    // 126/127. `{:#}` prints the whole context chain on one line.
+    result.unwrap_or_else(|err| {
+        eprintln!("pne-profiler: {err:#}");
+        failure_exit_code(&err)
+    })
 }
 
 /// Runs the target, prints its resource usage, and returns its exit status.
-fn run(cmd: &[OsString]) -> ExitCode {
+fn run(cmd: &[OsString]) -> anyhow::Result<ExitCode> {
     // First word is the program, the rest are its arguments.
     let (prog, args) = cmd.split_first().expect("clap guarantees at least one");
 
     // Spawn the target. Inheriting stdio lets it share our terminal, so it
     // reads input and prints output as if run directly.
     let start = Instant::now();
-    let spawned = Command::new(prog)
+    let child = Command::new(prog)
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .spawn();
-    let child = match spawned {
-        Ok(child) => child,
-        // The program isn't on PATH or doesn't exist.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!(
-                "pne-profiler: {}: command not found",
-                prog.to_string_lossy()
-            );
-            return ExitCode::from(127);
-        }
-        // Found but couldn't be executed, e.g. permission denied.
-        Err(e) => {
-            eprintln!("pne-profiler: {}: {e}", prog.to_string_lossy());
-            return ExitCode::from(126);
-        }
-    };
+        .spawn()
+        .with_context(|| format!("{}: cannot run", prog.to_string_lossy()))?;
 
     // Wait with wait4 rather than Child::wait so the kernel also hands back
-    // the target's resource usage. This reaps the child, so `child` must not
-    // be waited on again.
-    let (outcome, resource_usage) = match pne_perf::wait4(child) {
-        Ok(result) => result,
-        Err(e) => {
-            eprintln!("pne-profiler: waiting for {}: {e}", prog.to_string_lossy());
-            return ExitCode::FAILURE;
-        }
-    };
+    // the target's resource usage. wait4 takes `child` by value because it
+    // reaps it, so it can't be waited on again.
+    let (outcome, resource_usage) = pne_perf::wait4(child)
+        .with_context(|| format!("{}: cannot wait for it", prog.to_string_lossy()))?;
     let stats = RunStats {
         wall_time: start.elapsed(),
         resource_usage,
     };
     // stderr keeps the report out of the target's stdout, so piping still works.
-    eprint!("{}", summary(&stats));
+    eprint!("{stats}");
 
     // Exit with the target's result so scripts and CI see its failures,
     // using the shell's conventions for the cases with no exit code.
-    match outcome {
+    Ok(match outcome {
         // Normal exit: pass its code through.
         ExitOutcome::Exited(code) => ExitCode::from(code as u8),
         // Killed by a signal: report 128 + signal.
         ExitOutcome::Signaled(signal) => ExitCode::from(128 + signal as u8),
-    }
+    })
 }
 
-/// Formats the end-of-run report.
-fn summary(stats: &RunStats) -> String {
-    let usage = &stats.resource_usage;
-    let utilization = match stats.cpu_utilization() {
-        Some(u) => format!("{:.0}%", u * 100.0),
-        None => "n/a".to_string(),
-    };
-    format!(
-        "\npne-profiler: resource usage\n\
-         \x20 wall time   {:.3} s\n\
-         \x20 user time   {:.3} s\n\
-         \x20 sys time    {:.3} s\n\
-         \x20 CPU usage   {utilization}\n\
-         \x20 max RSS     {:.1} MiB\n",
-        stats.wall_time.as_secs_f64(),
-        usage.user_time.as_secs_f64(),
-        usage.sys_time.as_secs_f64(),
-        usage.max_rss.0 as f64 / (1024.0 * 1024.0),
-    )
+/// Exit status for an error from `run`, using the shell's conventions when the
+/// target couldn't be started.
+fn failure_exit_code(err: &anyhow::Error) -> ExitCode {
+    // Only a spawn failure is a bare io::Error under its context. A wait4
+    // failure is a pne_perf::WaitError, whose io::Error is its source rather
+    // than the error itself, so downcast_ref doesn't match it.
+    match err.downcast_ref::<io::Error>() {
+        // The program isn't on PATH or doesn't exist.
+        Some(e) if e.kind() == io::ErrorKind::NotFound => ExitCode::from(127),
+        // Found but couldn't be executed, e.g. permission denied.
+        Some(_) => ExitCode::from(126),
+        None => ExitCode::FAILURE,
+    }
 }
 
 /// Top-level command line: `pne-profiler <SUBCOMMAND>`.
@@ -111,46 +95,4 @@ pub enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         cmd: Vec<OsString>,
     },
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pne_core::{Bytes, ResourceUsage};
-    use std::time::Duration;
-
-    fn stats(wall_ms: u64, user_ms: u64, sys_ms: u64, max_rss: Bytes) -> RunStats {
-        RunStats {
-            wall_time: Duration::from_millis(wall_ms),
-            resource_usage: ResourceUsage {
-                user_time: Duration::from_millis(user_ms),
-                sys_time: Duration::from_millis(sys_ms),
-                max_rss,
-            },
-        }
-    }
-
-    #[test]
-    fn summary_converts_times_percent_and_mib() {
-        // 1.5 s of CPU over 2 s of wall time is 75%; 3 MiB + 512 KiB is 3.5 MiB.
-        let report = summary(&stats(2000, 1250, 250, Bytes::from_kib(3 * 1024 + 512)));
-
-        assert!(report.contains("wall time   2.000 s"), "{report}");
-        assert!(report.contains("user time   1.250 s"), "{report}");
-        assert!(report.contains("sys time    0.250 s"), "{report}");
-        assert!(report.contains("CPU usage   75%"), "{report}");
-        assert!(report.contains("max RSS     3.5 MiB"), "{report}");
-    }
-
-    #[test]
-    fn summary_shows_parallel_cpu_usage_above_100_percent() {
-        let report = summary(&stats(1000, 4000, 0, Bytes(0)));
-        assert!(report.contains("CPU usage   400%"), "{report}");
-    }
-
-    #[test]
-    fn summary_shows_na_for_zero_wall_time() {
-        let report = summary(&stats(0, 0, 0, Bytes(0)));
-        assert!(report.contains("CPU usage   n/a"), "{report}");
-    }
 }
