@@ -28,7 +28,7 @@ Minor_Changes:
   - (RPM) - changed update-changelog.py to build the %changelog entry from the last release in changelog.yml.
 ---
 Version: 0.2.0
-Release_Date: TBD
+Release_Date: 2026-10-12
 Trivial_Changes:
   - (Tests) - added pne-core unit tests for Bytes::from_kib, ResourceUsage::cpu_time, and RunStats::cpu_utilization.
   - (Tests) - added pne-perf unit tests for wait4 covering exit codes, killing signals, and max RSS.
