@@ -49,3 +49,11 @@ Minor_Changes:
   - (pne-core) - moved the resource usage report into a Display impl on RunStats.
   - (pne-perf) - changed wait4 to return a typed WaitError built with thiserror instead of io::Error.
   - (pne-cli) - changed error handling to anyhow, printing each error with its full context chain while keeping exit codes 126 and 127 for targets that cannot be started.
+---
+Version: 0.3.0
+Release_Date: TBD
+Trivial_Changes:
+  - (README) - documented how to run test coverage locally with cargo-llvm-cov in the Contribution section.
+Minor_Changes:
+  - (CI) - added a coverage job that runs cargo llvm-cov on PRs and pushes and writes the line coverage summary to the job summary.
+  - (CI) - added a README coverage badge that CI updates on pushes to master and rc branches through a shields.io endpoint file on the badges branch.

@@ -6,6 +6,7 @@ energy consumed (RAPL, GPU power APIs), with energy treated as a first-class
 metric.
 
 Status: early development. [![CI](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml/badge.svg)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml)
+Test Coverage: [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FBsovann%2Fpne-profiler%2Fbadges%2Fmaster.json)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml?query=branch%3Amaster)
 
 ## Building
 
@@ -93,3 +94,22 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    fold, so folding three minor tickets into one rc still gives 0.5.0. For
    the first release, `Version` is left as set. Commit `Cargo.lock` too after the
    next build picks up the new version.
+
+### Test coverage
+
+CI runs `cargo llvm-cov --workspace` on every PR and on pushes to `master`
+and `rc/**`, and prints the per-file summary in the job summary. After a push,
+it updates the coverage badge above (`master`) from the `badges` branch, which
+holds one shields.io JSON file per branch.
+
+To run it locally:
+
+```bash
+rustup component add llvm-tools-preview   # once, for the pinned toolchain
+cargo install cargo-llvm-cov --locked     # once
+cargo llvm-cov --workspace                # per-file summary
+cargo llvm-cov --workspace --open         # HTML report with uncovered lines
+```
+
+Coverage is not gated. Use it to find untested branches, such as error paths,
+not as a number to push up.
