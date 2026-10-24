@@ -1,6 +1,0 @@
----
-Trivial_Changes:
-  - (README) - documented how to run test coverage locally with cargo-llvm-cov in the Contribution section.
-Minor_Changes:
-  - (CI) - added a coverage job that runs cargo llvm-cov on PRs and pushes and writes the line coverage summary to the job summary.
-  - (CI) - added a README coverage badge that CI updates on pushes to master and rc branches through a shields.io endpoint file on the badges branch.
