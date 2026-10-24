@@ -1,5 +1,7 @@
+use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
-use std::process::{Command, Output};
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Output, Stdio};
 
 /// Runs pne-profiler with `args` and captures its exit status, stdout and stderr.
 fn prof(args: &[&str]) -> Output {
@@ -90,22 +92,22 @@ fn mask_numbers(text: &str) -> String {
     masked
 }
 
+/// The end-of-run report as `mask_numbers` leaves it.
+const MASKED_REPORT: &str = "\n\
+     pne-profiler: resource usage\n\
+     \x20 wall time   N.N s\n\
+     \x20 user time   N.N s\n\
+     \x20 sys time    N.N s\n\
+     \x20 CPU usage   N%\n\
+     \x20 max RSS     N.N MiB\n";
+
 #[test]
 fn run_reports_resource_usage_on_stderr() {
     let output = prof(&["run", "true"]);
 
     // The exact numbers are checked by pne-core's report tests; this checks
     // that the real binary prints that report, and nothing else, to stderr.
-    assert_eq!(
-        mask_numbers(&stderr(&output)),
-        "\n\
-         pne-profiler: resource usage\n\
-         \x20 wall time   N.N s\n\
-         \x20 user time   N.N s\n\
-         \x20 sys time    N.N s\n\
-         \x20 CPU usage   N%\n\
-         \x20 max RSS     N.N MiB\n"
-    );
+    assert_eq!(mask_numbers(&stderr(&output)), MASKED_REPORT);
     // The report must not mix into the target's stdout.
     assert_eq!(stdout(&output), "");
 }
@@ -153,4 +155,69 @@ fn run_target_command_not_found() {
         "stderr should start with {expected:?}: {}",
         stderr(&output)
     );
+}
+
+/// Runs `script` under pne-profiler and, once the target is running, sends
+/// `signal` to the whole process group, as the terminal does for Ctrl-C.
+///
+/// `script` must print `ready` to stdout first. The profiler installs its
+/// handlers before spawning the target, so that line also means the profiler
+/// is ready for the signal.
+fn prof_interrupted(script: &str, signal: &str) -> Output {
+    // A process group of its own keeps the signal away from the test runner.
+    let mut child = Command::new(env!("CARGO_BIN_EXE_pne-profiler"))
+        .args(["run", "sh", "-c", script])
+        .process_group(0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to run pne-profiler");
+
+    let mut line = String::new();
+    BufReader::new(child.stdout.as_mut().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    assert_eq!(line, "ready\n");
+
+    // A negative PID addresses the process group; process_group(0) made the
+    // profiler its leader, so the group ID is the profiler's PID.
+    let status = Command::new("kill")
+        .args([&format!("-{signal}"), "--", &format!("-{}", child.id())])
+        .status()
+        .expect("failed to run kill");
+    assert!(status.success(), "kill -{signal} failed");
+
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn run_ctrl_c_still_reports() {
+    // exec makes sleep the target, so it gets SIGINT with its default action.
+    let output = prof_interrupted("echo ready; exec sleep 30", "INT");
+
+    // 130 = 128 + SIGINT means the target died of the signal, which it only
+    // does if its disposition was reset to the default before exec. Getting
+    // it from the profiler means the profiler survived to report it.
+    assert_eq!(
+        output.status.code(),
+        Some(130),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert_eq!(mask_numbers(&stderr(&output)), MASKED_REPORT);
+}
+
+#[test]
+fn run_ctrl_backslash_still_reports() {
+    // SIGQUIT dumps core by default; ulimit keeps the test from writing one.
+    let output = prof_interrupted("ulimit -c 0; echo ready; exec sleep 30", "QUIT");
+
+    // SIGQUIT is 3, so the shell convention gives 131.
+    assert_eq!(
+        output.status.code(),
+        Some(131),
+        "stderr: {}",
+        stderr(&output)
+    );
+    assert_eq!(mask_numbers(&stderr(&output)), MASKED_REPORT);
 }

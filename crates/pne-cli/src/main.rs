@@ -2,9 +2,12 @@
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use pne_core::{ExitOutcome, RunStats};
+use signal_hook::consts::{SIGINT, SIGQUIT};
 use std::ffi::OsString;
 use std::io;
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 
 fn main() -> ExitCode {
@@ -28,6 +31,9 @@ fn main() -> ExitCode {
 fn run(cmd: &[OsString]) -> anyhow::Result<ExitCode> {
     // First word is the program, the rest are its arguments.
     let (prog, args) = cmd.split_first().expect("clap guarantees at least one");
+
+    // Before spawning, so there's no window where Ctrl-C kills us but not the target.
+    survive_terminal_interrupts();
 
     // Spawn the target. Inheriting stdio lets it share our terminal, so it
     // reads input and prints output as if run directly.
@@ -60,6 +66,29 @@ fn run(cmd: &[OsString]) -> anyhow::Result<ExitCode> {
         // Killed by a signal: report 128 + signal.
         ExitOutcome::Signaled(signal) => ExitCode::from(128 + signal as u8),
     })
+}
+
+/// Keeps Ctrl-C (SIGINT) and Ctrl-\ (SIGQUIT) from killing the profiler, so
+/// it can still report on a target the user interrupted. The terminal sends
+/// these to the whole foreground process group, so the target gets them too
+/// and decides for itself whether to stop.
+///
+/// Like `time` and `system(3)`, the profiler ignores them, but by catching
+/// them with a handler that does nothing rather than with `SIG_IGN`. An
+/// ignored signal stays ignored across `execve`, so the target would inherit
+/// it. A caught signal is reset to its default action, so the target handles
+/// Ctrl-C normally without any setup in the child before exec.
+///
+/// The handlers stay installed until the profiler exits. Failing to install
+/// them only costs the report on Ctrl-C, so it warns instead of failing.
+fn survive_terminal_interrupts() {
+    // The flag is only there because signal-hook needs an action to run; nothing reads it.
+    let caught = Arc::new(AtomicBool::new(false));
+    for signal in [SIGINT, SIGQUIT] {
+        if let Err(err) = signal_hook::flag::register(signal, Arc::clone(&caught)) {
+            eprintln!("pne-profiler: warning: cannot catch signal {signal}: {err}");
+        }
+    }
 }
 
 /// Exit status for an error from `run`, using the shell's conventions when the
