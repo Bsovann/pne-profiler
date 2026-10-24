@@ -18,7 +18,7 @@ Folding also sets Version in changelog.yml and Cargo.toml: the previous
 release's Version bumped by the most significant section the current release
 has. Major_Changes bumps X.0.0, Minor_Changes 0.X.0, Bug_Fixes 0.0.X, and
 Trivial_Changes alone bumps nothing. For the first release, Version is left
-as set. The release steps around folding are in RELEASE.md.
+as set.
 
 Requires PyYAML (Fedora: python3-pyyaml).
 """

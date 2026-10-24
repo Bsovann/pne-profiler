@@ -14,8 +14,6 @@ entries for the shipped code, components named after a pne-* crate such as
 (Changelogs/fragments.py fold), if Release_Date is unset, if Version disagrees
 with Cargo.toml, or if the spec already has an entry for that version-release.
 
-The full release steps are in RELEASE.md.
-
 Requires PyYAML (Fedora: python3-pyyaml).
 """
 
@@ -80,10 +78,7 @@ def load_changelog():
         try:
             date = datetime.date.fromisoformat(str(raw_date).strip())
         except ValueError:
-            fail(
-                f"{CHANGELOG}: set Release_Date to YYYY-MM-DD (got {raw_date!r}); "
-                "see RELEASE.md"
-            )
+            fail(f"{CHANGELOG}: set Release_Date to YYYY-MM-DD (got {raw_date!r})")
 
     entries = []
     for section in SECTIONS:
