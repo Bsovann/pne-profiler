@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Publishes the line coverage as a shields.io endpoint JSON on the `badges`
-  # branch, one file per branch (rc/v0.3.0 -> rc-v0.3.0.json). The README
+  # branch, one file per branch (rc/next -> rc-next.json). The README
   # badge reads master.json.
   coverage-badge:
     needs: coverage

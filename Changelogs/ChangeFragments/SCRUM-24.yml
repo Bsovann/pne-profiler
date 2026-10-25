@@ -1,0 +1,8 @@
+Trivial_Changes:
+  - (Tests) - added unit tests for fragments.py next_version covering 0.x and 1.x bumps, trivial-only releases, the first release, and the 1.0.0 opt-in, and ran them in the changelog workflow.
+  - (Docs) - documented in RELEASE.md that changelog.yml is the single source of the next version, that rc branches are named rc/next, and that pre-release versions such as 0.3.0-rc.1 are not used.
+  - (Docs) - changed the release steps to derive the git tag name from Cargo.toml instead of typing it.
+Minor_Changes:
+  - (Changelog) - changed fragments.py fold to bump the minor version for Major_Changes while the major version is 0, and added fold --stable as the explicit opt-in to 1.0.0.
+  - (Changelog) - made fragments.py check reject a released Version that is not greater than the previous release's.
+  - (RPM) - made update-changelog.py refuse a release that reuses an already-released Version, with a message saying how to proceed.

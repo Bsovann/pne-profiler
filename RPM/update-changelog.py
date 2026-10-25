@@ -11,8 +11,9 @@ Release to 1, and prepends one %changelog entry built from its sections. Only
 entries for the shipped code, components named after a pne-* crate such as
 (pne-cli), go into the RPM; tooling entries like (CI), (RPM), (Changelog) or
 (Licensing) stay in changelog.yml only. It refuses to run if ticket fragments haven't been folded in yet
-(Changelogs/fragments.py fold), if Release_Date is unset, if Version disagrees
-with Cargo.toml, or if the spec already has an entry for that version-release.
+(Changelogs/fragments.py fold), if Release_Date is unset, if Version reuses an
+earlier release's, if Version disagrees with Cargo.toml, or if the spec already
+has an entry for that version-release.
 
 The full release steps are in RELEASE.md.
 
@@ -70,6 +71,13 @@ def load_changelog():
     version = str(data.get("Version", "")).strip()
     if not version:
         fail(f"{CHANGELOG}: Version is missing")
+    # Same rule as fragments.py check: only Trivial_Changes means no bump.
+    if any(str(r.get("Version", "")).strip() == version for r in releases[:-1]):
+        fail(
+            f"{version} is already released, so this release can't ship: it has "
+            "only Trivial_Changes. Keep Release_Date: TBD and release once it has "
+            "a Bug_Fixes, Minor_Changes or Major_Changes entry; see RELEASE.md"
+        )
     if "-" in version:
         fail(f"{CHANGELOG}: RPM versions cannot contain '-': {version}")
 
