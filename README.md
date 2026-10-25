@@ -33,13 +33,13 @@ See [RELEASE.md](RELEASE.md) for the full steps.
 
 ## Contribution
 
-Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
+Work is tracked in Jira and flows ticket branch → `rc/next` → `master`.
 
 1. Branch off the current release candidate, naming the branch after the Jira
    key so Jira links it. Start commit messages with the key too.
 
    ```bash
-   git switch rc/vX.Y.Z && git pull   # the current release candidate
+   git switch rc/next && git pull   # the current release candidate
    git switch -c SCRUM-10
    git commit -m "SCRUM-10: ..."
    ```
@@ -79,21 +79,11 @@ Work is tracked in Jira and flows ticket branch → `rc/vX.Y.Z` → `master`.
    `Release_Date: TBD` document after it. Earlier releases are never changed.
 
    Each fold also sets the current release's `Version` and
-   `[workspace.package] version` in `Cargo.toml`. It takes the previous
-   release's `Version` and bumps it by the most significant section the
-   current release holds:
-
-   | Section            | Bump                 | 0.4.2 becomes |
-   |--------------------|----------------------|---------------|
-   | `Major_Changes`    | major, resets others | 1.0.0         |
-   | `Minor_Changes`    | minor, resets patch  | 0.5.0         |
-   | `Bug_Fixes`        | patch                | 0.4.3         |
-   | `Trivial_Changes`  | none                 | 0.4.2         |
-
-   The bump is computed from the previous release, not from the previous
-   fold, so folding three minor tickets into one rc still gives 0.5.0. For
-   the first release, `Version` is left as set. Commit `Cargo.lock` too after the
-   next build picks up the new version.
+   `[workspace.package] version` in `Cargo.toml`, bumping the previous
+   release by the most significant section folded so far. Before 1.0,
+   `Major_Changes` bumps the minor version. Never set the version by hand;
+   [RELEASE.md](RELEASE.md#versions) has the rules. Commit `Cargo.lock` too
+   after the next build picks up the new version.
 
 ### Test coverage
 

@@ -8,6 +8,7 @@ changelog.yml:
     Changelogs/fragments.py check            # validate fragments and changelog.yml (CI)
     Changelogs/fragments.py fold --dry-run   # show what would be folded
     Changelogs/fragments.py fold             # append to changelog.yml, delete fragments
+    Changelogs/fragments.py fold --stable    # same, and make this release 1.0.0
 
 changelog.yml holds one YAML document per release, oldest first. Every release
 but the last has a Release_Date; the last is the one in progress, with
@@ -17,8 +18,11 @@ Release_Date: TBD. Fragments fold into that last release. Once it has a date
 Folding also sets Version in changelog.yml and Cargo.toml: the previous
 release's Version bumped by the most significant section the current release
 has. Major_Changes bumps X.0.0, Minor_Changes 0.X.0, Bug_Fixes 0.0.X, and
-Trivial_Changes alone bumps nothing. For the first release, Version is left
-as set. The release steps around folding are in RELEASE.md.
+Trivial_Changes alone bumps nothing. While the major version is 0,
+Major_Changes bumps 0.X.0 like Minor_Changes; 1.0.0 is reached only with
+--stable, and later folds keep it. For the first release, Version is left as
+set. A Version that reuses an already-released one fails check. The version
+rules and the release steps are in RELEASE.md.
 
 Requires PyYAML (Fedora: python3-pyyaml).
 """
@@ -40,6 +44,7 @@ CARGO = ROOT / "Cargo.toml"
 SECTIONS = ["Trivial_Changes", "Major_Changes", "Minor_Changes", "Bug_Fixes"]
 CHANGELOG_KEYS = ["Version", "Release_Date"]
 UNRELEASED = "TBD"
+STABLE = "1.0.0"
 
 # Jira issue keys look like PROJECT-123.
 FRAGMENT_NAME = re.compile(r"^[A-Z][A-Z0-9]+-\d+\.yml$")
@@ -129,6 +134,39 @@ def check_fragment(path):
     return errors + check_sections(path.name, data)
 
 
+def parse_version(version):
+    m = SEMVER.match(version)
+    if not m:
+        raise ValueError(f"{CHANGELOG.name}: Version {version!r} is not X.Y.Z")
+    return tuple(map(int, m.groups()))
+
+
+def check_versions(releases):
+    """Each released Version must be greater than the release before it."""
+    errors = []
+    for i in range(1, len(releases)):
+        if not is_released(releases[i]):
+            continue
+        previous = str(releases[i - 1].get("Version", ""))
+        version = str(releases[i].get("Version", ""))
+        name = f"{CHANGELOG.name}: release #{i + 1} ({version})"
+        try:
+            older, newer = parse_version(previous), parse_version(version)
+        except ValueError as e:
+            errors.append(str(e))
+            continue
+        if newer == older:
+            errors.append(
+                f"{name}: {version} was already released (release #{i}). A release "
+                "with only Trivial_Changes can't ship: set Release_Date back to "
+                f"{UNRELEASED} and keep the release open until it has a Bug_Fixes, "
+                "Minor_Changes or Major_Changes entry"
+            )
+        elif newer < older:
+            errors.append(f"{name}: lower than the previous release, {previous}")
+    return errors
+
+
 def check_changelog():
     _, releases, errors = load_releases()
     for i, release in enumerate(releases, 1):
@@ -139,7 +177,7 @@ def check_changelog():
         if i < len(releases) and not is_released(release):
             errors.append(f"{name}: only the last release may have Release_Date: TBD")
         errors += check_sections(name, release, extra_keys=CHANGELOG_KEYS)
-    return errors
+    return errors + check_versions(releases)
 
 
 def cmd_check(_args):
@@ -154,17 +192,33 @@ def cmd_check(_args):
     return 0
 
 
-def next_version(previous, data):
-    """Bump `previous` by the most significant section with entries in `data`."""
-    m = SEMVER.match(previous)
-    if not m:
-        raise ValueError(f"{CHANGELOG.name}: previous Version {previous!r} is not X.Y.Z")
-    major, minor, patch = map(int, m.groups())
-    if data.get("Major_Changes"):
-        return f"{major + 1}.0.0"
-    if data.get("Minor_Changes"):
-        return f"{major}.{minor + 1}.0"
-    if data.get("Bug_Fixes"):
+def next_version(previous, current, stable=False):
+    """The Version of the release in progress, `current`.
+
+    `previous` is the last released Version, bumped by the most significant
+    section with entries in `current`, or None for the first release, which
+    keeps the Version it has. While the major version is 0, Major_Changes bumps
+    the minor version: 1.0.0 needs `stable`, and a release already at 1.0.0
+    keeps it.
+    """
+    if previous is None:
+        if stable:
+            raise ValueError("--stable needs a previous release to bump from")
+        return str(current["Version"])
+    major, minor, patch = parse_version(previous)
+    if major == 0:
+        if stable or str(current.get("Version")) == STABLE:
+            return STABLE
+        if current.get("Major_Changes") or current.get("Minor_Changes"):
+            return f"0.{minor + 1}.0"
+    else:
+        if stable:
+            raise ValueError(f"--stable only applies before 1.0.0, not after {previous}")
+        if current.get("Major_Changes"):
+            return f"{major + 1}.0.0"
+        if current.get("Minor_Changes"):
+            return f"{major}.{minor + 1}.0"
+    if current.get("Bug_Fixes"):
         return f"{major}.{minor}.{patch + 1}"
     return previous
 
@@ -208,7 +262,7 @@ def join_releases(texts):
 
 def cmd_fold(args):
     paths = fragments()
-    if not paths:
+    if not paths and not args.stable:
         print("nothing to fold")
         return 0
 
@@ -237,19 +291,22 @@ def cmd_fold(args):
             )
 
     old_version = str(current["Version"])
-    if len(releases) == 1:
-        version = old_version
+    previous = str(releases[-2]["Version"]) if len(releases) > 1 else None
+    try:
+        version = next_version(previous, current, stable=args.stable)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    if previous is None:
         version_note = f"Version: {version} (first release, left as set)"
     else:
-        previous = str(releases[-2]["Version"])
-        try:
-            version = next_version(previous, current)
-        except ValueError as e:
-            print(f"error: {e}", file=sys.stderr)
-            return 1
         version_note = f"Version: {old_version} -> {version} (previous release {previous})"
         if version == previous:
-            version_note += "\nnote: only Trivial_Changes since the previous release, so no bump"
+            version_note += (
+                f"\nwarning: only Trivial_Changes since {previous}, so no bump. This "
+                "release can't ship until it has a Bug_Fixes, Minor_Changes or "
+                "Major_Changes entry"
+            )
     current["Version"] = version
     texts[-1] = dump_release(current)
 
@@ -279,6 +336,9 @@ def main():
     sub.add_parser("check", help="validate fragments and changelog.yml")
     fold = sub.add_parser("fold", help="fold fragments into changelog.yml")
     fold.add_argument("--dry-run", action="store_true", help="print, change nothing")
+    fold.add_argument(
+        "--stable", action="store_true", help="make this release 1.0.0 (only from 0.x)"
+    )
     args = parser.parse_args()
     return {"check": cmd_check, "fold": cmd_fold}[args.command](args)
 
