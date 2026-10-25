@@ -5,7 +5,7 @@ hardware counters, cache behaviour, memory bandwidth, roofline position, and
 energy consumed (RAPL, GPU power APIs), with energy treated as a first-class
 metric.
 
-Status: early development. [![CI](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml/badge.svg)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml)
+Status: early development. [![CI](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml/badge.svg)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml) \
 Test Coverage: [![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FBsovann%2Fpne-profiler%2Fbadges%2Fmaster.json)](https://github.com/Bsovann/pne-profiler/actions/workflows/ci.yml?query=branch%3Amaster)
 
 ## Building
