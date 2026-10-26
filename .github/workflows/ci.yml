@@ -29,6 +29,82 @@ jobs:
       - run: cargo clippy --workspace --all-targets
       - run: cargo test --workspace
 
+  coverage:
+    runs-on: ubuntu-latest
+    outputs:
+      lines: ${{ steps.report.outputs.lines }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Keep `toolchain` in sync with rust-toolchain.toml, as in `check`.
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: 1.98.1
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      # Downloads a prebuilt cargo-llvm-cov and verifies its checksum.
+      - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo llvm-cov --workspace --no-report
+      - name: Report
+        id: report
+        run: |
+          cargo llvm-cov report --summary-only | tee coverage.txt
+          cargo llvm-cov report --summary-only --json --output-path coverage.json
+          lines=$(jq -r '.data[0].totals.lines.percent | . * 100 | round / 100' coverage.json)
+          echo "lines=$lines" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Coverage: $lines% of lines"
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Publishes the line coverage as a shields.io endpoint JSON on the `badges`
+  # branch, one file per branch (rc/next -> rc-next.json). The README
+  # badge reads master.json.
+  coverage-badge:
+    needs: coverage
+    # Pushes only: a pull request (including one from a fork) never reaches the
+    # write token below.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # contents: write is needed to push the badge JSON to the `badges` branch.
+    # This job runs no project code, only git and jq.
+    permissions:
+      contents: write
+    # Serialize pushes to `badges` so two branches don't race.
+    concurrency:
+      group: coverage-badge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Push badge JSON
+        env:
+          LINES: ${{ needs.coverage.outputs.lines }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if git fetch --depth=1 origin badges; then
+            git switch -c badges FETCH_HEAD
+          else
+            git switch --orphan badges
+          fi
+          color=$(jq -nr --argjson p "$LINES" \
+            'if $p >= 90 then "brightgreen" elif $p >= 75 then "green"
+             elif $p >= 60 then "yellow" else "red" end')
+          file="${BRANCH//\//-}.json"
+          jq -n --arg m "$LINES%" --arg c "$color" \
+            '{schemaVersion: 1, label: "coverage", message: $m, color: $c}' > "$file"
+          git add "$file"
+          if git diff --cached --quiet; then
+            echo "Badge unchanged."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Update coverage badge for $BRANCH: $LINES%"
+          git push origin badges
+
   typos:
     runs-on: ubuntu-latest
     steps:

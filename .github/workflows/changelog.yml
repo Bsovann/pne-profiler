@@ -20,6 +20,7 @@ jobs:
         with:
           python-version: '3.x'
       - run: pip install pyyaml
+      - run: python -m unittest discover -s Changelogs -v
       - run: Changelogs/fragments.py check
       - name: Require a ticket fragment
         if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-changelog') }}
