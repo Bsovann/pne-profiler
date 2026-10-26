@@ -1,0 +1,5 @@
+---
+Trivial_Changes:
+  - (Tests) - added CLI integration tests that send SIGINT and SIGQUIT to the profiler's process group and check the report still prints with exit code 130 or 131.
+Minor_Changes:
+  - (pne-cli) - changed run to survive Ctrl-C (SIGINT) and Ctrl-\ (SIGQUIT) while the target runs, using signal-hook, so the report still prints when a run is interrupted; the target keeps the default handling for both signals.
