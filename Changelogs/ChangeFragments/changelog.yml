@@ -51,7 +51,7 @@ Minor_Changes:
   - (pne-cli) - changed error handling to anyhow, printing each error with its full context chain while keeping exit codes 126 and 127 for targets that cannot be started.
 ---
 Version: 0.3.0
-Release_Date: TBD
+Release_Date: 2026-10-25
 Trivial_Changes:
   - (README) - documented how to run test coverage locally with cargo-llvm-cov in the Contribution section.
   - (Docs) - moved the release guide from README.md into RELEASE.md and linked it from README, CLAUDE.md, and the changelog scripts.
