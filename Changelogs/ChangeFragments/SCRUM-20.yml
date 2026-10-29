@@ -1,0 +1,5 @@
+---
+Trivial_Changes:
+  - (Tests) - added whole-string unit tests for the report's time and memory formatting at every unit boundary, including values that only cross a boundary after rounding, and a report test for a 30-day, 200 GiB run.
+Minor_Changes:
+  - (pne-core) - changed the report to print times of 60 s and above as h:mm:ss.s, with days from 24 h (e.g. 30d 0:00:00.0), and max RSS in KiB, MiB, GiB, or TiB with one decimal place, choosing the unit from the rounded value; times under 60 s keep the N.NNN s format.

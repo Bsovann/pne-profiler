@@ -24,6 +24,9 @@ cargo build --release
 | `pne-energy` | RAPL / powercap energy readings, GPU power later |
 | `pne-cli`    | The `pne-profiler` binary                        |
 
+[ARCHITECTURE.md](ARCHITECTURE.md) covers how the crates fit together, what
+happens during a run, and the design principles behind them.
+
 ## Releasing
 
 Each rc branch ships as one release: fold the remaining fragments, date the
