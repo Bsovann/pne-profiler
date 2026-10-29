@@ -97,9 +97,21 @@ mod tests {
     }
 
     #[test]
-    fn reports_nonzero_max_rss() {
-        let (_, usage) = run("true");
-        assert!(usage.max_rss > Bytes(0));
+    fn reports_max_rss_of_a_known_allocation() {
+        // dd holds one 64 MiB block, and reading /dev/zero into it makes every
+        // page resident; fullblock retries short reads until it's all filled.
+        const MIB: u64 = 1024 * 1024;
+        let (_, usage) =
+            run("dd if=/dev/zero of=/dev/null bs=64M count=1 iflag=fullblock status=none");
+
+        // On top of the block, dd itself and its libraries take a few MiB. The
+        // upper bound also catches an inflated floor from this test process
+        // (see tests/inherited_max_rss.rs).
+        assert!(
+            usage.max_rss >= Bytes(64 * MIB) && usage.max_rss < Bytes(72 * MIB),
+            "expected 64-72 MiB, got {:.1} MiB",
+            usage.max_rss.0 as f64 / MIB as f64
+        );
     }
 
     fn timeval(tv_sec: libc::time_t, tv_usec: libc::suseconds_t) -> libc::timeval {
