@@ -1,0 +1,4 @@
+---
+Trivial_Changes:
+  - (pne-cli) - replaced the downcast that picked exit codes 126 and 127 for run failures with a typed RunError whose variants each map to an exit code, so a new failure mode can no longer be mistaken for a spawn failure; exit codes and error messages are unchanged.
+  - (Tests) - added unit tests for the run error to exit code mapping, including a wait4 failure caused by NotFound, which must exit 1 rather than 127.

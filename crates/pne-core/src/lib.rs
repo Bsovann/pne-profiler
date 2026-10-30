@@ -92,7 +92,7 @@ fn round_div(n: u128, d: u128) -> u128 {
 }
 
 /// Formats a duration as `N.NNN s` under a minute, `h:mm:ss.s` from a
-/// minute, and `Nd h:mm:ss.s` from a day.
+/// minute, and `day h:mm:ss.s` from a day.
 ///
 /// The format is chosen from the rounded value, so 59.9996 s, which rounds
 /// to 60.000 s, prints as `0:01:00.0`, and 23:59:59.96 prints as
