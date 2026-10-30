@@ -1,4 +1,0 @@
----
-Trivial_Changes:
-  - (Tests) - replaced the nonzero max RSS test with one where the target allocates 64 MiB and the reported max RSS must land between 64 and 72 MiB.
-  - (Tests) - added a test that reproduces the max RSS floor a target inherits from its parent at exec, through posix_spawn but not fork.

@@ -1,4 +1,0 @@
----
-Trivial_Changes:
-  - (Docs) - added ARCHITECTURE.md describing the crate structure and dependency rule, the runtime flow of a run, the design principles, and the planned Collector trait and multi-node agents.
-  - (README) - linked ARCHITECTURE.md from the workspace layout section.
