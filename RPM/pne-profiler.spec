@@ -12,7 +12,7 @@
 Name:           pne-profiler
 # Keep in sync with [workspace.package] version in Cargo.toml;
 # RPM/update-changelog.py sets this at release time.
-Version:        0.2.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Performance and energy profiler for parallel workloads
 
@@ -56,6 +56,10 @@ cargo test --release --locked --offline --workspace
 # release time by RPM/update-changelog.py. Add one by hand only for a
 # packaging-only change (bump Release, keep Version).
 %changelog
+* Thu Oct 29 2026 Bondith Sovann <bsovann04@gmail.com> - 0.3.0-1
+- (pne-cli) - changed run to survive Ctrl-C (SIGINT) and Ctrl-\ (SIGQUIT) while the target runs, using signal-hook, so the report still prints when a run is interrupted; the target keeps the default handling for both signals.
+- (pne-core) - changed the report to print times of 60 s and above as h:mm:ss.s, with days from 24 h (e.g. 30d 0:00:00.0), and max RSS in KiB, MiB, GiB, or TiB with one decimal place, choosing the unit from the rounded value; times under 60 s keep the N.NNN s format.
+- (pne-cli) - replaced the downcast that picked exit codes 126 and 127 for run failures with a typed RunError whose variants each map to an exit code, so a new failure mode can no longer be mistaken for a spawn failure; exit codes and error messages are unchanged.
 * Mon Oct 12 2026 Bondith Sovann <bsovann04@gmail.com> - 0.2.0-1
 - (pne-core) - added the Bytes, ExitOutcome, ResourceUsage, and RunStats types for reporting the target's resource usage.
 - (pne-core) - added Bytes::from_kib to convert kibibyte counts such as getrusage's ru_maxrss to bytes.

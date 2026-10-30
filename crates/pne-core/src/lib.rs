@@ -65,6 +65,9 @@ impl RunStats {
 
 /// The end-of-run report. It starts with a blank line to separate it from
 /// the target's own output, and ends with a single newline.
+///
+/// This is for people: times and sizes are scaled to a readable unit.
+/// Machine-readable output should use the raw `Duration` and `Bytes` instead.
 impl Display for RunStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let usage = self.resource_usage;
@@ -72,16 +75,67 @@ impl Display for RunStats {
             Some(u) => format!("{:.0}%", u * 100.0),
             None => "n/a".to_string(),
         };
-        let max_rss_mib = usage.max_rss.0 as f64 / (1024.0 * 1024.0);
 
         writeln!(f)?;
         writeln!(f, "pne-profiler: resource usage")?;
-        writeln!(f, "  wall time   {:.3} s", self.wall_time.as_secs_f64())?;
-        writeln!(f, "  user time   {:.3} s", usage.user_time.as_secs_f64())?;
-        writeln!(f, "  sys time    {:.3} s", usage.sys_time.as_secs_f64())?;
+        writeln!(f, "  wall time   {}", format_duration(self.wall_time))?;
+        writeln!(f, "  user time   {}", format_duration(usage.user_time))?;
+        writeln!(f, "  sys time    {}", format_duration(usage.sys_time))?;
         writeln!(f, "  CPU usage   {utilization}")?;
-        writeln!(f, "  max RSS     {max_rss_mib:.1} MiB")
+        writeln!(f, "  max RSS     {}", format_bytes(usage.max_rss))
     }
+}
+
+/// Divides, rounding halves up.
+fn round_div(n: u128, d: u128) -> u128 {
+    (n + d / 2) / d
+}
+
+/// Formats a duration as `N.NNN s` under a minute, `h:mm:ss.s` from a
+/// minute, and `day h:mm:ss.s` from a day.
+///
+/// The format is chosen from the rounded value, so 59.9996 s, which rounds
+/// to 60.000 s, prints as `0:01:00.0`, and 23:59:59.96 prints as
+/// `1d 0:00:00.0`.
+fn format_duration(d: Duration) -> String {
+    let nanos = d.as_nanos();
+    let millis = round_div(nanos, 1_000_000);
+    if millis < 60_000 {
+        return format!("{}.{:03} s", millis / 1000, millis % 1000);
+    }
+
+    let tenths = round_div(nanos, 100_000_000);
+    let (secs, tenth) = (tenths / 10, tenths % 10);
+    let (mins, sec) = (secs / 60, secs % 60);
+    let (hours, min) = (mins / 60, mins % 60);
+    let (days, hour) = (hours / 24, hours % 24);
+    let clock = format!("{hour}:{min:02}:{sec:02}.{tenth}");
+    if days == 0 {
+        clock
+    } else {
+        format!("{days}d {clock}")
+    }
+}
+
+/// Formats a size in KiB, MiB, GiB, or TiB (1024-based) with one decimal
+/// place.
+///
+/// It moves to the next unit once the rounded value reaches 1024.0, so
+/// 1023.95 MiB prints as `1.0 GiB`, not `1024.0 MiB`. Sizes under 1 KiB
+/// still print in KiB, and sizes of 1024 TiB or more stay in TiB.
+fn format_bytes(bytes: Bytes) -> String {
+    const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
+    let tenths_in = |scale| round_div(u128::from(bytes.0) * 10, scale);
+
+    let mut unit = 0;
+    let mut scale = 1024;
+    let mut tenths = tenths_in(scale);
+    while unit + 1 < UNITS.len() && tenths >= 1024 * 10 {
+        unit += 1;
+        scale *= 1024;
+        tenths = tenths_in(scale);
+    }
+    format!("{}.{} {}", tenths / 10, tenths % 10, UNITS[unit])
 }
 
 #[cfg(test)]
@@ -190,7 +244,7 @@ mod tests {
                 "  user time   4.000 s",
                 "  sys time    0.000 s",
                 "  CPU usage   400%",
-                "  max RSS     0.0 MiB",
+                "  max RSS     0.0 KiB",
             ])
         );
     }
@@ -207,8 +261,124 @@ mod tests {
                 "  user time   0.000 s",
                 "  sys time    0.000 s",
                 "  CPU usage   n/a",
-                "  max RSS     0.0 MiB",
+                "  max RSS     0.0 KiB",
             ])
         );
+    }
+
+    #[test]
+    fn report_format_long_run_large_memory() {
+        // 30 days of wall time with 200 GiB peak RSS, the case that used to
+        // print as 2592000.000 s and 204800.0 MiB.
+        let report = stats(
+            30 * 24 * 3600 * 1000,
+            3_723_400,
+            59_999,
+            Bytes::from_kib(200 * 1024 * 1024),
+        )
+        .to_string();
+        assert_eq!(
+            report,
+            lines(&[
+                "",
+                "pne-profiler: resource usage",
+                "  wall time   30d 0:00:00.0",
+                "  user time   1:02:03.4",
+                "  sys time    59.999 s",
+                "  CPU usage   0%",
+                "  max RSS     200.0 GiB",
+            ])
+        );
+    }
+
+    fn nanos(n: u64) -> String {
+        format_duration(Duration::from_nanos(n))
+    }
+
+    fn secs(s: u64) -> String {
+        format_duration(Duration::from_secs(s))
+    }
+
+    #[test]
+    fn duration_under_a_minute_is_seconds_with_millis() {
+        assert_eq!(secs(0), "0.000 s");
+        assert_eq!(nanos(499_999), "0.000 s");
+        assert_eq!(nanos(500_000), "0.001 s");
+        assert_eq!(nanos(59_999_000_000), "59.999 s");
+        assert_eq!(nanos(59_999_499_999), "59.999 s");
+    }
+
+    #[test]
+    fn duration_that_rounds_to_a_minute_is_clock_format() {
+        // 59.9995 s and up round to 60.000 s, so they must not print as
+        // "60.000 s".
+        assert_eq!(nanos(59_999_500_000), "0:01:00.0");
+        assert_eq!(nanos(59_999_600_000), "0:01:00.0");
+        assert_eq!(secs(60), "0:01:00.0");
+    }
+
+    #[test]
+    fn duration_clock_format_carries_on_rounding() {
+        assert_eq!(nanos(3_723_400_000_000), "1:02:03.4");
+        assert_eq!(nanos(3_599_949_999_999), "0:59:59.9");
+        assert_eq!(nanos(3_599_950_000_000), "1:00:00.0");
+        assert_eq!(secs(36_000), "10:00:00.0");
+    }
+
+    #[test]
+    fn duration_from_a_day_shows_days() {
+        assert_eq!(nanos(86_399_949_999_999), "23:59:59.9");
+        assert_eq!(nanos(86_399_950_000_000), "1d 0:00:00.0");
+        assert_eq!(secs(86_400), "1d 0:00:00.0");
+        assert_eq!(secs(30 * 86_400), "30d 0:00:00.0");
+        assert_eq!(
+            nanos(30 * 86_400_000_000_000 + 3_723_400_000_000),
+            "30d 1:02:03.4"
+        );
+    }
+
+    const KIB: u64 = 1024;
+    const MIB: u64 = 1024 * KIB;
+    const GIB: u64 = 1024 * MIB;
+    const TIB: u64 = 1024 * GIB;
+
+    fn bytes(n: u64) -> String {
+        format_bytes(Bytes(n))
+    }
+
+    // Each unit boundary is tested just below and at the point where the
+    // value rounds to 1024.0. Half a tenth of the lower unit is 51.2 bytes
+    // for KiB, 52_428.8 for MiB, and 53_687_091.2 for GiB.
+
+    #[test]
+    fn bytes_under_a_mib_are_kib() {
+        assert_eq!(bytes(0), "0.0 KiB");
+        assert_eq!(bytes(512), "0.5 KiB");
+        assert_eq!(bytes(KIB), "1.0 KiB");
+        assert_eq!(bytes(MIB - 52), "1023.9 KiB");
+    }
+
+    #[test]
+    fn bytes_that_round_to_1024_kib_are_mib() {
+        assert_eq!(bytes(MIB - 51), "1.0 MiB");
+        assert_eq!(bytes(MIB), "1.0 MiB");
+        assert_eq!(bytes(3 * MIB + 512 * KIB), "3.5 MiB");
+        assert_eq!(bytes(GIB - 52_429), "1023.9 MiB");
+    }
+
+    #[test]
+    fn bytes_that_round_to_1024_mib_are_gib() {
+        assert_eq!(bytes(GIB - 52_428), "1.0 GiB");
+        assert_eq!(bytes(GIB), "1.0 GiB");
+        assert_eq!(bytes(200 * GIB), "200.0 GiB");
+        assert_eq!(bytes(TIB - 53_687_092), "1023.9 GiB");
+    }
+
+    #[test]
+    fn bytes_that_round_to_1024_gib_are_tib() {
+        assert_eq!(bytes(TIB - 53_687_091), "1.0 TiB");
+        assert_eq!(bytes(TIB), "1.0 TiB");
+        assert_eq!(bytes(2048 * TIB), "2048.0 TiB");
+        assert_eq!(bytes(u64::MAX), "16777216.0 TiB");
     }
 }

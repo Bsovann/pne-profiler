@@ -49,3 +49,28 @@ Minor_Changes:
   - (pne-core) - moved the resource usage report into a Display impl on RunStats.
   - (pne-perf) - changed wait4 to return a typed WaitError built with thiserror instead of io::Error.
   - (pne-cli) - changed error handling to anyhow, printing each error with its full context chain while keeping exit codes 126 and 127 for targets that cannot be started.
+---
+Version: 0.3.0
+Release_Date: 2026-10-29
+Trivial_Changes:
+  - (README) - documented how to run test coverage locally with cargo-llvm-cov in the Contribution section.
+  - (Docs) - moved the release guide from README.md into RELEASE.md and linked it from README, CLAUDE.md, and the changelog scripts.
+  - (Tests) - added CLI integration tests that send SIGINT and SIGQUIT to the profiler's process group and check the report still prints with exit code 130 or 131.
+  - (Tests) - added unit tests for fragments.py next_version covering 0.x and 1.x bumps, trivial-only releases, the first release, and the 1.0.0 opt-in, and ran them in the changelog workflow.
+  - (Docs) - documented in RELEASE.md that changelog.yml is the single source of the next version, that rc branches are named rc/next, and that pre-release versions such as 0.3.0-rc.1 are not used.
+  - (Docs) - changed the release steps to derive the git tag name from Cargo.toml instead of typing it.
+  - (Docs) - added ARCHITECTURE.md describing the crate structure and dependency rule, the runtime flow of a run, the design principles, and the planned Collector trait and multi-node agents.
+  - (README) - linked ARCHITECTURE.md from the workspace layout section.
+  - (Tests) - replaced the nonzero max RSS test with one where the target allocates 64 MiB and the reported max RSS must land between 64 and 72 MiB.
+  - (Tests) - added a test that reproduces the max RSS floor a target inherits from its parent at exec, through posix_spawn but not fork.
+  - (Tests) - added whole-string unit tests for the report's time and memory formatting at every unit boundary, including values that only cross a boundary after rounding, and a report test for a 30-day, 200 GiB run.
+  - (pne-cli) - replaced the downcast that picked exit codes 126 and 127 for run failures with a typed RunError whose variants each map to an exit code, so a new failure mode can no longer be mistaken for a spawn failure; exit codes and error messages are unchanged.
+  - (Tests) - added unit tests for the run error to exit code mapping, including a wait4 failure caused by NotFound, which must exit 1 rather than 127.
+Minor_Changes:
+  - (CI) - added a coverage job that runs cargo llvm-cov on PRs and pushes and writes the line coverage summary to the job summary.
+  - (CI) - added a README coverage badge that CI updates on pushes to master and rc branches through a shields.io endpoint file on the badges branch.
+  - (pne-cli) - changed run to survive Ctrl-C (SIGINT) and Ctrl-\ (SIGQUIT) while the target runs, using signal-hook, so the report still prints when a run is interrupted; the target keeps the default handling for both signals.
+  - (Changelog) - changed fragments.py fold to bump the minor version for Major_Changes while the major version is 0, and added fold --stable as the explicit opt-in to 1.0.0.
+  - (Changelog) - made fragments.py check reject a released Version that is not greater than the previous release's.
+  - (RPM) - made update-changelog.py refuse a release that reuses an already-released Version, with a message saying how to proceed.
+  - (pne-core) - changed the report to print times of 60 s and above as h:mm:ss.s, with days from 24 h (e.g. 30d 0:00:00.0), and max RSS in KiB, MiB, GiB, or TiB with one decimal place, choosing the unit from the rounded value; times under 60 s keep the N.NNN s format.
