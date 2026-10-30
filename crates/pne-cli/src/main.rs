@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
-use anyhow::Context;
 use clap::{Parser, Subcommand};
 use pne_core::{ExitOutcome, RunStats};
+use pne_perf::WaitError;
 use signal_hook::consts::{SIGINT, SIGQUIT};
 use std::ffi::OsString;
 use std::io;
@@ -18,17 +18,54 @@ fn main() -> ExitCode {
         Commands::Run { cmd } => run(&cmd),
     };
 
-    // Not `fn main() -> anyhow::Result<..>`: returning Err from main always
-    // exits 1, but a target that can't be started should get the shell's
-    // 126/127. `{:#}` prints the whole context chain on one line.
+    // Not `fn main() -> Result<..>`: returning Err from main always exits 1,
+    // but a target that can't be started should get the shell's 126/127.
     result.unwrap_or_else(|err| {
-        eprintln!("pne-profiler: {err:#}");
-        failure_exit_code(&err)
+        let code = err.exit_code();
+        // anyhow's `{:#}` prints the error and each of its sources on one line.
+        eprintln!("pne-profiler: {:#}", anyhow::Error::new(err));
+        ExitCode::from(code)
     })
 }
 
+/// Why `run` couldn't report on the target.
+///
+/// Each variant gets its exit code in [`RunError::exit_code`], so a new
+/// failure mode has to pick one before it compiles.
+#[derive(Debug, thiserror::Error)]
+enum RunError {
+    /// The target couldn't be started.
+    #[error("{}: cannot run", .prog.to_string_lossy())]
+    Spawn {
+        prog: OsString,
+        #[source]
+        source: io::Error,
+    },
+    /// The target started, but waiting for it or reading its usage failed.
+    #[error("{}: cannot wait for it", .prog.to_string_lossy())]
+    Wait {
+        prog: OsString,
+        #[source]
+        source: WaitError,
+    },
+}
+
+impl RunError {
+    /// Exit status for this error, using the shell's conventions when the
+    /// target couldn't be started.
+    fn exit_code(&self) -> u8 {
+        match self {
+            // The program isn't on PATH or doesn't exist.
+            RunError::Spawn { source, .. } if source.kind() == io::ErrorKind::NotFound => 127,
+            // Found but couldn't be executed, e.g. permission denied.
+            RunError::Spawn { .. } => 126,
+            RunError::Wait { .. } => 1,
+        }
+    }
+}
+
 /// Runs the target, prints its resource usage, and returns its exit status.
-fn run(cmd: &[OsString]) -> anyhow::Result<ExitCode> {
+fn run(cmd: &[OsString]) -> Result<ExitCode, RunError> {
     // First word is the program, the rest are its arguments.
     let (prog, args) = cmd.split_first().expect("clap guarantees at least one");
 
@@ -44,13 +81,18 @@ fn run(cmd: &[OsString]) -> anyhow::Result<ExitCode> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .with_context(|| format!("{}: cannot run", prog.to_string_lossy()))?;
+        .map_err(|source| RunError::Spawn {
+            prog: prog.clone(),
+            source,
+        })?;
 
     // Wait with wait4 rather than Child::wait so the kernel also hands back
     // the target's resource usage. wait4 takes `child` by value because it
     // reaps it, so it can't be waited on again.
-    let (outcome, resource_usage) = pne_perf::wait4(child)
-        .with_context(|| format!("{}: cannot wait for it", prog.to_string_lossy()))?;
+    let (outcome, resource_usage) = pne_perf::wait4(child).map_err(|source| RunError::Wait {
+        prog: prog.clone(),
+        source,
+    })?;
     let stats = RunStats {
         wall_time: start.elapsed(),
         resource_usage,
@@ -91,21 +133,6 @@ fn survive_terminal_interrupts() {
     }
 }
 
-/// Exit status for an error from `run`, using the shell's conventions when the
-/// target couldn't be started.
-fn failure_exit_code(err: &anyhow::Error) -> ExitCode {
-    // Only a spawn failure is a bare io::Error under its context. A wait4
-    // failure is a pne_perf::WaitError, whose io::Error is its source rather
-    // than the error itself, so downcast_ref doesn't match it.
-    match err.downcast_ref::<io::Error>() {
-        // The program isn't on PATH or doesn't exist.
-        Some(e) if e.kind() == io::ErrorKind::NotFound => ExitCode::from(127),
-        // Found but couldn't be executed, e.g. permission denied.
-        Some(_) => ExitCode::from(126),
-        None => ExitCode::FAILURE,
-    }
-}
-
 /// Top-level command line: `pne-profiler <SUBCOMMAND>`.
 #[derive(Parser, Debug)]
 #[command(version, about = "A lightweight HPC profiler")]
@@ -124,4 +151,60 @@ pub enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         cmd: Vec<OsString>,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spawn_error(kind: io::ErrorKind) -> RunError {
+        RunError::Spawn {
+            prog: "prog".into(),
+            source: kind.into(),
+        }
+    }
+
+    fn wait_error(source: WaitError) -> RunError {
+        RunError::Wait {
+            prog: "prog".into(),
+            source,
+        }
+    }
+
+    #[test]
+    fn spawn_not_found_exits_127() {
+        assert_eq!(spawn_error(io::ErrorKind::NotFound).exit_code(), 127);
+    }
+
+    #[test]
+    fn other_spawn_errors_exit_126() {
+        assert_eq!(
+            spawn_error(io::ErrorKind::PermissionDenied).exit_code(),
+            126
+        );
+        assert_eq!(spawn_error(io::ErrorKind::Other).exit_code(), 126);
+    }
+
+    #[test]
+    fn wait_errors_exit_1() {
+        // An io::Error under a wait failure says nothing about the target
+        // being found, even when it's NotFound.
+        let wait_not_found = WaitError::Wait(io::ErrorKind::NotFound.into());
+        assert_eq!(wait_error(wait_not_found).exit_code(), 1);
+        assert_eq!(
+            wait_error(WaitError::PidOutOfRange(u32::MAX)).exit_code(),
+            1
+        );
+    }
+
+    #[test]
+    fn message_includes_each_source() {
+        // main prints errors this way. The CLI tests can't make wait4 fail,
+        // so this is what checks that its context reaches stderr.
+        let err = anyhow::Error::new(wait_error(WaitError::PidOutOfRange(u32::MAX)));
+        assert_eq!(
+            format!("{err:#}"),
+            "prog: cannot wait for it: pid 4294967295 does not fit in pid_t"
+        );
+    }
 }

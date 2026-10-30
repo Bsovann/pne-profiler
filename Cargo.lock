@@ -148,6 +148,7 @@ dependencies = [
  "pne-energy",
  "pne-perf",
  "signal-hook",
+ "thiserror",
 ]
 
 [[package]]
